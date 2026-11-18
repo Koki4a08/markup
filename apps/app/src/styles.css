@@ -534,3 +534,108 @@ body {
 .inspector .empty-hint {
   margin: 0;
 }
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.is-active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.bridge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.bridge-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a1a1aa;
+}
+
+.bridge-status.is-connected::before {
+  background: #16a34a;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-meta {
+  display: flex;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.history-seq {
+  font-family: var(--mono-font);
+}
+
+.history-row.is-agent .history-actor {
+  color: var(--agent);
+  font-weight: 500;
+}
+
+.history-summary {
+  grid-column: 1;
+}
+
+.history-row .text-button,
+.history-state {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.history-state {
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.history-row.is-reverted .history-summary {
+  text-decoration: line-through;
+  color: var(--text-2);
+}
+
+.history-error {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--danger);
+  border-bottom: 1px solid var(--border);
+}

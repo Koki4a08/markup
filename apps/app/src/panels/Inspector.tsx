@@ -47,9 +47,9 @@ export function Inspector() {
   const parents = useNodes(nodes.map((n) => n.parentId ?? '').filter(Boolean));
   if (nodes.length === 0) {
     return (
-      <aside className="panel inspector" aria-label="Inspector">
+      <div className="inspector-body">
         <p className="empty-hint">Select a layer to edit its styles.</p>
-      </aside>
+      </div>
     );
   }
   const ids = nodes.map((n) => n.id);
@@ -88,7 +88,7 @@ export function Inspector() {
   const other = [...new Set(nodes.flatMap((n) => Object.keys(n.styles)))].filter((k) => !OWNED.has(k)).sort();
 
   return (
-    <aside className="panel inspector" aria-label="Inspector">
+    <div className="inspector-body">
       <header className="inspector-head">{nodes.length === 1 ? nodes[0]!.name : `${nodes.length} layers`}</header>
 
       {anyFrame && (
@@ -158,7 +158,7 @@ export function Inspector() {
         ))}
         <AddStyle onAdd={(k, v) => set({ [k]: v })} />
       </Section>
-    </aside>
+    </div>
   );
 }
 
