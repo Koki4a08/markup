@@ -8,7 +8,9 @@ import { fitRect, type Viewport } from './canvas/viewport';
 import { runCommand, type CommandContext } from './commands';
 import { isMacPlatform, resolveShortcut } from './keyboard';
 import { icons } from './panels/icons';
-import { Inspector } from './panels/Inspector';
+import { RightPanel } from './panels/RightPanel';
+import { connectBridge, type BridgeStatus } from './bridge/client';
+import { createDomTools } from './bridge/domTools';
 import { LayersPanel } from './panels/LayersPanel';
 import { SelectionProvider, useSelection } from './selection';
 import { useDoc } from './store/DocProvider';
@@ -39,6 +41,20 @@ function EditorShell() {
   const [collapseSignal, setCollapseSignal] = useState(0);
   const [dragTick, setDragTick] = useState(0);
   const bumpDrag = useCallback(() => setDragTick((t) => t + 1), []);
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>('connecting');
+  const activePageRef = useRef(activePageId);
+  activePageRef.current = page?.id ?? activePageId;
+
+  useEffect(() => {
+    const bridge = connectBridge({
+      doc,
+      getSelection: selection.get,
+      activePageId: () => activePageRef.current,
+      domTools: createDomTools({ doc, canvas: () => canvasRef.current, getSelection: selection.get }),
+      onStatus: setBridgeStatus,
+    });
+    return () => bridge.close();
+  }, [doc, selection.get]);
 
   const zoomToFit = useCallback(() => {
     const canvas = canvasRef.current;
@@ -122,6 +138,9 @@ function EditorShell() {
             </button>
           ))}
         </div>
+        <span className={`bridge-status is-${bridgeStatus}`} title={bridgeStatus === 'connected' ? 'Agents can reach this file through markup mcp' : 'Run `markup mcp` from an agent to connect'}>
+          {bridgeStatus === 'connected' ? 'Agents connected' : 'Agents offline'}
+        </span>
         <button className="zoom" title="Zoom to fit (⇧1)" onClick={zoomToFit}>
           {Math.round(viewport.zoom * 100)}%
         </button>
@@ -146,7 +165,7 @@ function EditorShell() {
           onPointerDown={gestures.onPointerDown}
           overlay={<SelectionOverlay canvasRef={canvasRef} ids={selection.ids} viewport={viewport} dragTick={dragTick} onHandleDown={gestures.onHandleDown} />}
         />
-        <Inspector />
+        <RightPanel />
       </main>
     </div>
   );
