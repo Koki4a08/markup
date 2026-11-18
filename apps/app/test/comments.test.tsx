@@ -103,6 +103,33 @@ describe('comments', () => {
     expect(screen.queryByRole('button', { name: 'Comment thread 1' })).toBeNull();
   });
 
+  it('Enter on a focused popover button activates it and runs no canvas command', async () => {
+    const { doc, container } = await mountEditor();
+    fireEvent.keyDown(window, { key: 'c', code: 'KeyC' });
+    placeComment(container);
+    const box = screen.getByLabelText('Add a comment');
+    fireEvent.change(box, { target: { value: 'fix this' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    const resolve = screen.getByRole('button', { name: 'Resolve' });
+    resolve.focus();
+    // Not default-prevented, so the browser still turns Enter into a click.
+    expect(fireEvent.keyDown(resolve, { key: 'Enter', code: 'Enter' })).toBe(true);
+    expect(fireEvent.keyDown(resolve, { key: 'Backspace', code: 'Backspace' })).toBe(true);
+    expect(fireEvent.keyDown(resolve, { key: 'v', code: 'KeyV' })).toBe(true);
+    fireEvent.click(resolve);
+    expect(doc.threads()[0]!.status).toBe('resolved');
+  });
+
+  it('Backspace on a focused panel button does not reach the canvas', async () => {
+    await mountEditor();
+    const tab = screen.getByRole('tab', { name: /^Comments/ });
+    tab.focus();
+    expect(fireEvent.keyDown(tab, { key: 'Backspace', code: 'Backspace' })).toBe(true);
+    expect(fireEvent.keyDown(tab, { key: 'Enter', code: 'Enter' })).toBe(true);
+    // Outside any control the shortcut still applies.
+    expect(fireEvent.keyDown(window, { key: 'Backspace', code: 'Backspace' })).toBe(false);
+  });
+
   describe('panel', () => {
 
     async function panelSetup() {

@@ -120,3 +120,9 @@ export function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   return !!el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
 }
+
+/** Focused buttons, links, tabs and menu items keep their own Enter, Space and Delete: canvas shortcuts must not hijack them. */
+export function isInteractive(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return !!el && typeof el.closest === 'function' && !!el.closest('button, a[href], [role=button], [role=tab], [role=menuitem], .comment-popover, .comments-panel');
+}
