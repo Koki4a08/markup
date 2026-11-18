@@ -8,6 +8,7 @@ import { fitRect, type Viewport } from './canvas/viewport';
 import { runCommand, type CommandContext } from './commands';
 import { isMacPlatform, resolveShortcut } from './keyboard';
 import { icons } from './panels/icons';
+import { Inspector } from './panels/Inspector';
 import { LayersPanel } from './panels/LayersPanel';
 import { SelectionProvider, useSelection } from './selection';
 import { useDoc } from './store/DocProvider';
@@ -145,6 +146,7 @@ function EditorShell() {
           onPointerDown={gestures.onPointerDown}
           overlay={<SelectionOverlay canvasRef={canvasRef} ids={selection.ids} viewport={viewport} dragTick={dragTick} onHandleDown={gestures.onHandleDown} />}
         />
+        <Inspector />
       </main>
     </div>
   );

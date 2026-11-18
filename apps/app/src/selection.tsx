@@ -9,9 +9,9 @@ interface SelectionValue {
 
 const SelectionContext = createContext<SelectionValue | null>(null);
 
-export function SelectionProvider({ children }: { children: ReactNode }) {
-  const [ids, setIds] = useState<string[]>([]);
-  const ref = useRef<string[]>([]);
+export function SelectionProvider({ children, initial = [] }: { children: ReactNode; initial?: string[] }) {
+  const [ids, setIds] = useState<string[]>(initial);
+  const ref = useRef<string[]>(initial);
   const set = useCallback((next: string[]) => {
     ref.current = next;
     setIds(next);

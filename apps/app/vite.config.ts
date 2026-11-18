@@ -5,5 +5,5 @@ export default defineConfig({
   plugins: [react()],
   server: { port: 5173, strictPort: true },
   clearScreen: false,
-  test: { name: 'app', environment: 'jsdom' },
+  test: { name: 'app', environment: 'jsdom', setupFiles: ['./test/setup.ts'] },
 });
