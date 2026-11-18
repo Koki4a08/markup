@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { parseHtml } from './html-import';
 import * as ops from './ops';
 import type { DuplicateResult, Move, MoveResult, StyleUpdate } from './ops';
 import { createYNode, newId, snapshotNode, type YNode } from './ynode';
@@ -115,8 +116,13 @@ export class MarkupDoc {
   }
 
   updateStyles(actor: Actor, updates: StyleUpdate[]): { ignoredStyles: Record<string, string[]> } {
-    this.mutate(actor, () => ops.updateStyles(this, updates));
-    return { ignoredStyles: {} };
+    return { ignoredStyles: this.mutate(actor, () => ops.updateStyles(this, updates)) };
+  }
+
+  writeHtml(actor: Actor, targetNodeId: string, html: string, mode: 'insert-children' | 'replace'): { nodeIds: string[]; ignoredStyles: string[] } {
+    const { specs, ignored } = parseHtml(html);
+    const nodeIds = mode === 'replace' ? this.replaceNode(actor, targetNodeId, specs) : this.insertNodes(actor, targetNodeId, specs);
+    return { nodeIds, ignoredStyles: ignored };
   }
 
   setText(actor: Actor, updates: { nodeId: string; html: string }[]): void {
