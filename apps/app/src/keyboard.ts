@@ -4,6 +4,7 @@ export type Command =
   | 'tool:rect'
   | 'tool:text'
   | 'tool:hand'
+  | 'tool:comment'
   | 'delete'
   | 'duplicate'
   | 'selectChildren'
@@ -43,6 +44,7 @@ const BINDINGS: Binding[] = [
   { code: 'KeyR', command: 'tool:rect' },
   { code: 'KeyT', command: 'tool:text' },
   { code: 'KeyH', command: 'tool:hand' },
+  { code: 'KeyC', command: 'tool:comment' },
   { code: 'Backspace', command: 'delete' },
   { code: 'Delete', command: 'delete' },
   { code: 'KeyD', mod: true, command: 'duplicate' },

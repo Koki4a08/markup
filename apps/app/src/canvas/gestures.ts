@@ -17,6 +17,8 @@ interface GestureOptions {
   rootId: string;
   bumpDrag(): void;
   startTextEdit(id: string): void;
+  /** Comment tool click: the node under the pointer with the offset inside it, or the world point. */
+  placeComment(at: { nodeId: string | null; x: number; y: number }): void;
 }
 
 const elOf = (canvas: HTMLElement, id: string) => canvas.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`);
@@ -51,6 +53,7 @@ export function useCanvasGestures(o: GestureOptions) {
     const start = toWorld(e);
     if (o.tool === 'frame' || o.tool === 'rect') return drawBox(start, o.tool);
     if (o.tool === 'text') return placeText(start);
+    if (o.tool === 'comment') return placeComment(start);
     const hit = hitTest(doc, o.rootId, start, { deep: e.metaKey || e.ctrlKey, rectOf });
     if (!hit) return selection.set([]);
     if (e.detail === 2 && doc.getNode(hit)?.type === 'text') return o.startTextEdit(hit);
@@ -192,6 +195,12 @@ export function useCanvasGestures(o: GestureOptions) {
         o.setTool('move');
       },
     );
+  };
+
+  const placeComment = (p: Point) => {
+    const hit = hitTest(doc, o.rootId, p, { deep: true, rectOf });
+    const r = hit ? rectOf(hit) : null;
+    o.placeComment(hit && r ? { nodeId: hit, x: p.x - r.x, y: p.y - r.y } : { nodeId: null, x: p.x, y: p.y });
   };
 
   const placeText = (p: Point) => {

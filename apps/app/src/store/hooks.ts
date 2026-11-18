@@ -19,7 +19,7 @@ function useStableSnapshot<T>(subscribe: Subscribe, read: () => T): T {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-function useDeep<T>(type: Y.AbstractType<any>, read: () => T): T {
+export function useDeep<T>(type: Y.AbstractType<any>, read: () => T): T {
   const subscribe = useCallback<Subscribe>(
     (onChange) => {
       type.observeDeep(onChange);
