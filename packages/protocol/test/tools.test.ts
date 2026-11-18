@@ -12,7 +12,7 @@ describe('tool schemas', () => {
 
   it('covers the phase-1 tool set exactly', () => {
     expect(Object.keys(tools).sort()).toEqual([...PHASE1_TOOLS].sort());
-    expect(PHASE1_TOOLS).toHaveLength(33);
+    expect(PHASE1_TOOLS).toHaveLength(37);
   });
 
   it('write_html requires html, targetNodeId, mode', () => {

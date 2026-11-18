@@ -26,6 +26,8 @@ export interface BridgeOptions {
   /** Injected for Node tests; the browser global otherwise. */
   WebSocketImpl?: typeof WebSocket;
   retryMs?: number;
+  /** Id of the editor's human actor; "current-user" in comment filters resolves to it. */
+  currentUserId?: string;
   onStatus?(status: BridgeStatus): void;
 }
 
@@ -117,7 +119,7 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
           if (!tool) throw new MarkupError('INVALID_ARGUMENT', `${msg.method} needs the file on screen. Call open_file with ${fileId} to bring its tab to the foreground, then retry.`);
           result = await tool(params);
         } else {
-          result = runDocTool(doc, actor, msg.method as DocToolName, params, { activePageId: workspace.activePageId(fileId) });
+          result = runDocTool(doc, actor, msg.method as DocToolName, params, { activePageId: workspace.activePageId(fileId), currentUserId: opts.currentUserId ?? 'local-user' });
           if (WRITE_TOOLS.has(msg.method)) {
             const artboards = touchedArtboards(doc, msg.method, params, result);
             if (artboards.length) doc.setWorking(actor, artboards, true);

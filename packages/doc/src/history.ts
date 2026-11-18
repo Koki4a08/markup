@@ -17,7 +17,7 @@ export const LOG_ORIGIN = Symbol('markup-log');
 export const logArr = (doc: MarkupDoc) => doc.ydoc.getArray<Y.Map<unknown>>('log');
 
 /** Shared types whose changes count as document history. */
-export const historyScope = (doc: MarkupDoc) => [doc.nodes, doc.pagesArr, doc.ydoc.getArray('tokens')];
+export const historyScope = (doc: MarkupDoc) => [doc.nodes, doc.pagesArr, doc.ydoc.getArray('tokens'), doc.ydoc.getArray('comments')];
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 

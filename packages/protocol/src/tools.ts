@@ -138,6 +138,37 @@ export const tools = {
       removeDividerIds: z.array(z.string()).optional().describe('IDs of dividers to remove; they must not appear in order.'),
     },
   ),
+  list_comment_threads: tool(
+    "List visible comment threads in the open file as compact summaries. A comment thread is a conversation pinned to a node: a first message plus reply messages, each with its own author, and an \"open\" or \"resolved\" workflow status. Lists only open (unresolved) threads by default. Use this first to discover relevant discussion, then call get_comment_thread for full replies. If you are tasked and fully addressing a thread's feedback, mark it done with set_comment_thread_status. Supports page, node, status, author, search, sort, and pagination filters. User ID filters accept \"current-user\" for the signed-in user. Deleted threads/messages are never returned.",
+    {
+      fileId,
+      currentPageOnly: z.boolean().optional().describe('Only threads on the page the user is viewing.'),
+      pageId: z.string().optional().describe('Only threads on this page.'),
+      nodeId: z.string().optional().describe('Only threads pinned to this node.'),
+      status: z.enum(['open', 'resolved', 'all']).optional().describe('Workflow status filter (default open).'),
+      participantUserId: z.string().optional().describe('Only threads where this user wrote a message. Accepts "current-user".'),
+      threadAuthorUserId: z.string().optional().describe('Only threads started by this user. Accepts "current-user".'),
+      search: z.string().optional().describe('Case-insensitive text to find in message bodies.'),
+      searchScope: z.enum(['first-message', 'all-messages']).optional().describe('Where to search (default all-messages).'),
+      sortField: z.enum(['page', 'createdAt', 'updatedAt']).optional().describe('Sort field (default page: page order, then createdAt).'),
+      sortDirection: z.enum(['asc', 'desc']).optional(),
+      limit: z.number().int().min(1).max(200).optional().describe('Page size (default 50, max 200).'),
+      offset: z.number().int().min(0).optional(),
+      previewLength: z.number().int().min(20).max(1000).optional().describe('Characters of the first message to include (default 240).'),
+    },
+  ),
+  get_comment_thread: tool(
+    'Get full details for one visible comment thread, including its open/resolved status, all reply messages, reactions, attachments (each with a public URL you can fetch to view the file), page context, and pinned node context. Works for any status. Call list_comment_threads first when you do not already know the commentThreadId. Deleted threads/messages are never returned.',
+    { fileId, commentThreadId: z.string().min(1) },
+  ),
+  list_comment_thread_authors: tool(
+    "List every user who has started a comment thread or written a visible message in the open file, with their user ID, display name, activity counts, and last activity time. Use this to resolve a person's name to a userId before filtering list_comment_threads by participantUserId or threadAuthorUserId. Deleted threads/messages are never counted.",
+    { fileId, pageId: z.string().optional().describe('Only count activity on this page.') },
+  ),
+  set_comment_thread_status: tool(
+    'Set the workflow status of one comment thread to "resolved" or "open". Resolve a thread once its feedback has been fully addressed in the design — this is how you mark review comments as done. Reopen a resolved thread if more work turns out to be needed.',
+    { fileId, commentThreadId: z.string().min(1), status: z.enum(['open', 'resolved']) },
+  ),
   list_resources: tool(
     'Lists files and folders. Each item has type "file" or "folder" and parentId, omitted for a top-level folder. Open files are listed first. `open` means the file is a desktop tab. `active` means that tab is in the foreground. Both apply only to files. `draft` means the item is in the user’s drafts; every local Markup file is a draft. Then files and folders recently updated. Pass parentId to list only what is inside one folder. Pass a higher limit until truncated is absent before treating the list as the whole tree.',
     {
