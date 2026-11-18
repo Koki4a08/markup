@@ -28,6 +28,7 @@ describe('capture', () => {
     const { html, root } = await run('flex row');
     expect(html.startsWith('<!--markup:snapshot v1-->')).toBe(true);
     expect(root.getAttribute('layer-name')).toBe(META.title);
+    expect(root.getAttribute('data-markup-snapshot')).toBe('v1');
     expect(root.getAttribute('data-source')).toBe(META.url);
     expect(css(root)).toEqual({ position: 'relative', width: '200px', height: '50px' });
   });
@@ -210,5 +211,24 @@ describe('capture', () => {
     const [a, b] = [...root.children];
     expect(css(a)).toMatchObject({ position: 'absolute', left: '0px', top: '0px', width: '100px' });
     expect(css(b)).toMatchObject({ position: 'absolute', left: '180px', top: '0px', width: '120px' });
+  });
+});
+
+describe('shadow DOM', () => {
+  it('captures open shadow roots and slotted content instead of empty frames', async () => {
+    document.body.innerHTML = `<shreddit-post id="t" data-rect="0 0 300 100" style="display: block"><p data-rect="10 40 200 20">Slotted body</p></shreddit-post>`;
+    const host = document.getElementById('t')!;
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `<div class="card" data-rect="0 0 300 100" style="background-color: rgb(255, 0, 0)"><h3 data-rect="10 10 200 20">Shadow title</h3><slot></slot><slot name="empty"><span data-rect="10 70 100 20">Fallback</span></slot></div>`;
+    const env = fakeEnv({}, { 'Shadow title': '10 10 200 20', 'Slotted body': '10 40 200 20', Fallback: '10 70 100 20' });
+    const html = await capture([host], env, META);
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    expect(holder.textContent).toContain('Shadow title');
+    expect(holder.textContent).toContain('Slotted body');
+    expect(holder.textContent).toContain('Fallback');
+    const red = [...holder.querySelectorAll('div')].find((d) => css(d).backgroundColor === 'rgb(255, 0, 0)');
+    expect(red).toBeDefined();
+    expect(red!.textContent).toContain('Slotted body');
   });
 });

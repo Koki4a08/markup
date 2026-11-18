@@ -1,3 +1,5 @@
+// apps/app type-checks this file too (its snapshot paste test runs the real capture), so name the chrome types here.
+/// <reference types="chrome" />
 import { SAFE_IMAGE } from './images';
 
 export type Pseudo = '::before' | '::after' | '::placeholder';

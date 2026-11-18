@@ -22,6 +22,8 @@ import {
 } from './styles';
 
 export const SNAPSHOT_MARKER = '<!--markup:snapshot v1-->';
+/** On each snapshot root div; also how the capture skips Markup's own UI on the page. */
+export const SNAPSHOT_ATTR = 'data-markup-snapshot';
 export const TOO_LARGE = 'This page is too large to snapshot — pick a smaller element.';
 
 /** Caps that keep a full-page capture from exhausting memory or the clipboard. */
@@ -78,6 +80,21 @@ const attrs = (decls: Decl[], name?: string) => {
 };
 const isText = (n: Node): n is Text => n.nodeType === 3;
 const isElement = (n: Node): n is Element => n.nodeType === 1;
+
+/**
+ * The children the page renders for el (its flat-tree children): an open shadow root's content in place of the
+ * light DOM, with each <slot> replaced by the nodes assigned to it, or by its fallback content when none are.
+ */
+function renderedChildren(el: Element): Node[] {
+  const out: Node[] = [];
+  for (const n of Array.from((el.shadowRoot ?? el).childNodes)) {
+    if (isElement(n) && n.localName === 'slot') {
+      const assigned = typeof (n as HTMLSlotElement).assignedNodes === 'function' ? (n as HTMLSlotElement).assignedNodes({ flatten: true }) : [];
+      out.push(...(assigned.length ? assigned : renderedChildren(n)));
+    } else out.push(n);
+  }
+  return out;
+}
 
 class Serializer {
   readonly images: ImageLoader;
@@ -148,7 +165,7 @@ class Serializer {
 
   async node(el: Element, mode: Mode): Promise<string> {
     const tag = el.localName;
-    if (SKIP.has(tag) || el.hasAttribute('data-markup-snapshot')) return '';
+    if (SKIP.has(tag) || el.hasAttribute(SNAPSHOT_ATTR)) return '';
     if (++this.nodes > this.limits.maxNodes) throw new Error(TOO_LARGE);
     const cs = this.env.style(el);
     if (!this.visible(el, cs)) return '';
@@ -189,12 +206,12 @@ class Serializer {
       if (run.length) out.push({ run });
       run = [];
     };
-    for (const child of Array.from(el.childNodes)) {
+    for (const child of renderedChildren(el)) {
       if (isText(child)) {
         run.push(child);
         continue;
       }
-      if (!isElement(child) || SKIP.has(child.localName) || child.hasAttribute('data-markup-snapshot')) continue;
+      if (!isElement(child) || SKIP.has(child.localName) || child.hasAttribute(SNAPSHOT_ATTR)) continue;
       const cs = this.env.style(child);
       if (!this.visible(child, cs)) continue;
       if (this.inlineFormatting(child, cs)) {
@@ -213,7 +230,7 @@ class Serializer {
     if (!INLINE.has(el.localName) || get(cs, 'display') !== 'inline') return false;
     if (el.localName === 'br') return true;
     if (isBoxy(cs) || hasPadding(cs)) return false;
-    for (const c of Array.from(el.childNodes)) {
+    for (const c of renderedChildren(el)) {
       if (isText(c)) continue;
       if (!isElement(c)) continue;
       const ccs = this.env.style(c);
@@ -274,7 +291,7 @@ class Serializer {
   flexOk(el: Element, cs: CSSStyleDeclaration, items: Item[], pseudos: (PseudoInfo | null)[]): boolean {
     if (!/^(inline-)?flex$/.test(get(cs, 'display'))) return false;
     if (pseudos.some((p) => p?.absolute)) return false;
-    if (Array.from(el.children).some((c) => this.skippedInFlow(c))) return false;
+    if (renderedChildren(el).filter(isElement).some((c) => this.skippedInFlow(c))) return false;
     return items.every((i) => {
       if ('run' in i) return true;
       const c = this.env.style(i.el);
@@ -291,7 +308,7 @@ class Serializer {
 
   /** A child left out of the output that still takes space (and a gap) in its parent's flow. */
   skippedInFlow(el: Element): boolean {
-    if (SKIP.has(el.localName) || el.hasAttribute('data-markup-snapshot')) return false;
+    if (SKIP.has(el.localName) || el.hasAttribute(SNAPSHOT_ATTR)) return false;
     const cs = this.env.style(el);
     const display = get(cs, 'display');
     if (display === 'none' || display === 'contents' || /^(absolute|fixed)$/.test(get(cs, 'position'))) return false;
@@ -324,7 +341,7 @@ class Serializer {
       const cs = this.env.style(n);
       if (!this.visible(n, cs)) continue;
       const name = INLINE.has(tag) ? tag : 'span';
-      out += `<${name}${attrs(inlineDecls(cs, base))}>${this.inlineHtml(Array.from(n.childNodes), base)}</${name}>`;
+      out += `<${name}${attrs(inlineDecls(cs, base))}>${this.inlineHtml(renderedChildren(n), base)}</${name}>`;
     }
     return out;
   }
@@ -631,7 +648,8 @@ export async function capture(
   const height = Math.max(0, ...boxes.map((b) => b.h));
   const root = styleAttr([['position', 'relative'], ['width', px(width)], ['height', px(height)]]);
   const name = meta.title.trim() || hostOf(meta.url) || 'Snapshot';
-  return `${SNAPSHOT_MARKER}<div layer-name="${escAttr(name)}" data-source="${escAttr(meta.url)}" style="${root}">${parts.join('')}</div>`;
+  // The attribute marks the root too: Chrome's async clipboard sanitiser can drop the comment.
+  return `${SNAPSHOT_MARKER}<div ${SNAPSHOT_ATTR}="v1" layer-name="${escAttr(name)}" data-source="${escAttr(meta.url)}" style="${root}">${parts.join('')}</div>`;
 }
 
 function hostOf(url: string): string {
