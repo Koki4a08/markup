@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { parsePxValue } from './geometry';
 import { NodeView } from './NodeView';
 import { worldToScreen, zoomAt, type Viewport } from './viewport';
@@ -12,11 +12,13 @@ interface CanvasProps {
   overlay?: ReactNode;
   onPointerDown?: (e: React.PointerEvent<HTMLDivElement>) => void;
   cursor?: string;
+  containerRef?: RefObject<HTMLDivElement | null>;
 }
 
 /** Infinite canvas: pans with wheel or Space/H drag, zooms with ctrl/⌘ + wheel at the cursor. */
-export function Canvas({ rootId, viewport, onViewport, overlay, onPointerDown, cursor }: CanvasProps) {
-  const ref = useRef<HTMLDivElement>(null);
+export function Canvas({ rootId, viewport, onViewport, overlay, onPointerDown, cursor, containerRef }: CanvasProps) {
+  const ownRef = useRef<HTMLDivElement>(null);
+  const ref = containerRef ?? ownRef;
   const artboards = useChildren(rootId);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const panning = useRef<{ x: number; y: number } | null>(null);

@@ -21,6 +21,7 @@ export class MarkupDoc {
   readonly pagesArr: Y.Array<Y.Map<unknown>>;
   readonly nodes: Y.Map<YNode>;
   private readonly history: EntryHistory;
+  private batchDepth = 0;
 
   constructor(opts: { ydoc?: Y.Doc; name?: string } = {}) {
     this.ydoc = opts.ydoc ?? new Y.Doc();
@@ -189,12 +190,40 @@ export class MarkupDoc {
 
   /** Runs fn in one transaction whose origin is the actor; a non-null summary appends a log entry. */
   protected mutate<T>(actor: Actor, summary: string | null, fn: () => T): T {
+    // Inside a batch, the batch owns the transaction and the single log entry.
+    if (this.batchDepth > 0) return fn();
     let result!: T;
     this.ydoc.transact(() => {
       result = fn();
       if (summary !== null) this.history.tag(appendEntry(this, actor, summary));
     }, actor);
     return result;
+  }
+
+  /** Runs several operations as one transaction: one log entry, one undo step. */
+  batch<T>(actor: Actor, summary: string, fn: () => T): T {
+    if (this.batchDepth > 0) return fn();
+    let result!: T;
+    this.ydoc.transact(() => {
+      this.batchDepth++;
+      try {
+        result = fn();
+      } finally {
+        this.batchDepth--;
+      }
+      this.history.tag(appendEntry(this, actor, summary));
+    }, actor);
+    return result;
+  }
+
+  setFlags(actor: Actor, ids: string[], flags: { hidden?: boolean; locked?: boolean }, summary?: string): void {
+    this.mutate(actor, summary ?? `Changed visibility or lock on ${plural(ids.length, 'node')}`, () => {
+      for (const id of ids) {
+        const node = this.yNode(id);
+        if (flags.hidden !== undefined) node.set('hidden', flags.hidden);
+        if (flags.locked !== undefined) node.set('locked', flags.locked);
+      }
+    });
   }
 
   private insertPage(name: string, icon: PageIcon | null): string {
