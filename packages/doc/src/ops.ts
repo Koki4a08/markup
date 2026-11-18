@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 import type { MarkupDoc } from './document';
-import { MarkupError, type Actor, type NodeSpec, type StyleValue } from './schema';
+import { MarkupError, type Actor, type MarkupNode, type NodeSpec, type StyleValue } from './schema';
+import { normalizeStyles } from './styles';
 import { createYNode, newId, type YNode } from './ynode';
 
 export type Move =
@@ -79,13 +80,20 @@ function attach(doc: MarkupDoc, nodeId: string, parentId: string, index: number)
   return at;
 }
 
-function buildSpec(doc: MarkupDoc, spec: NodeSpec, parentId: string): string {
+function buildSpec(doc: MarkupDoc, input: NodeSpec, parentId: string): string {
+  const spec = input.cloneOf ? resolveClone(doc, input.cloneOf) : input;
   const id = newId();
   const name = spec.name ?? defaultName(spec);
   doc.nodes.set(id, createYNode({ id, type: spec.type, name, parentId, styles: spec.styles, text: spec.text, src: spec.src, svg: spec.svg }));
   const children = childrenOf(doc.yNode(id));
   for (const child of spec.children ?? []) children.push([buildSpec(doc, child, id)]);
   return id;
+}
+
+function resolveClone(doc: MarkupDoc, cloneOf: NonNullable<NodeSpec['cloneOf']>): NodeSpec {
+  const spec = toSpec(doc, cloneOf.nodeId);
+  if (cloneOf.styles) spec.styles = { ...spec.styles, ...cloneOf.styles };
+  return spec;
 }
 
 function defaultName(spec: NodeSpec): string {
@@ -115,16 +123,22 @@ export function replaceNode(doc: MarkupDoc, targetId: string, specs: NodeSpec[])
   return insertNodes(doc, parentId, specs, index);
 }
 
-export function updateStyles(doc: MarkupDoc, updates: StyleUpdate[]): void {
-  for (const { nodeIds, styles } of updates) {
+export function updateStyles(doc: MarkupDoc, updates: StyleUpdate[]): Record<string, string[]> {
+  const ignoredStyles: Record<string, string[]> = {};
+  for (const { nodeIds, styles: raw } of updates) {
     for (const id of nodeIds) {
-      const map = stylesOf(doc.yNode(id));
+      const node = doc.yNode(id);
+      const type = node.get('type') as MarkupNode['type'];
+      const { styles, ignored } = normalizeStyles(raw, { type, isArtboard: artboardOf(doc, id) === id });
+      if (ignored.length) ignoredStyles[id] = [...(ignoredStyles[id] ?? []), ...ignored];
+      const map = stylesOf(node);
       for (const [key, value] of Object.entries(styles)) {
         if (value === null || value === '') map.delete(key);
         else map.set(key, value);
       }
     }
   }
+  return ignoredStyles;
 }
 
 export function setText(doc: MarkupDoc, updates: { nodeId: string; html: string }[]): void {
