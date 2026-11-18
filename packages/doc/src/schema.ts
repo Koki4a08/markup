@@ -68,7 +68,8 @@ export type ErrorCode =
   | 'IS_ROOT'
   | 'INVALID_ORDER'
   | 'TOKEN_NOT_FOUND'
-  | 'INVALID_ARGUMENT';
+  | 'INVALID_ARGUMENT'
+  | 'INVALID_PARAMS';
 
 export class MarkupError extends Error {
   readonly code: ErrorCode;
