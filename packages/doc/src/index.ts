@@ -10,3 +10,4 @@ export { resolveTokenValue, TOKEN_TYPES, type Token, type TokenType, type TokenE
 export { wildcard } from './wildcard';
 export { ActorUndo, type LogEntry } from './history';
 export { runDocTool, type ToolContext } from './tools';
+export { MarkupLibrary, type LibraryItem } from './library';
