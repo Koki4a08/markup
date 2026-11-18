@@ -15,6 +15,8 @@ export function App() {
     openLocalDoc()
       .then(({ doc }) => {
         if (cancelled) return;
+        // Indicators persist in the file; any left from a previous session belong to agents that are gone.
+        doc.clearWorking();
         setDoc(doc);
         if (import.meta.env.DEV) Object.assign(window, { __markup: { doc, actor: LOCAL_USER } });
       })

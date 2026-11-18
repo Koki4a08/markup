@@ -104,9 +104,18 @@ function defaultName(spec: NodeSpec): string {
   return { frame: 'Frame', image: 'Image', svg: 'SVG' }[spec.type];
 }
 
+/** Throws before any write if a clone source is missing, so a failed insert leaves no partial tree. */
+function assertClones(doc: MarkupDoc, specs: NodeSpec[]) {
+  for (const spec of specs) {
+    if (spec.cloneOf) doc.yNode(spec.cloneOf.nodeId);
+    assertClones(doc, spec.children ?? []);
+  }
+}
+
 export function insertNodes(doc: MarkupDoc, parentId: string, specs: NodeSpec[], index?: number): string[] {
   const parent = doc.yNode(parentId);
   if (!canHaveChildren(parent)) throw new MarkupError('INVALID_PARENT', `Node ${parentId} cannot have children.`);
+  assertClones(doc, specs);
   const ids = specs.map((spec) => buildSpec(doc, spec, parentId));
   const siblings = childrenOf(parent);
   const at = Math.max(0, Math.min(index ?? siblings.length, siblings.length));
@@ -117,6 +126,7 @@ export function insertNodes(doc: MarkupDoc, parentId: string, specs: NodeSpec[],
 export function replaceNode(doc: MarkupDoc, targetId: string, specs: NodeSpec[]): string[] {
   const target = doc.yNode(targetId);
   assertNotRoot(target);
+  assertClones(doc, specs);
   const parentId = target.get('parentId') as string;
   const index = childrenOf(doc.yNode(parentId)).toArray().indexOf(targetId);
   deleteNodes(doc, [targetId]);
@@ -125,6 +135,7 @@ export function replaceNode(doc: MarkupDoc, targetId: string, specs: NodeSpec[])
 
 export function updateStyles(doc: MarkupDoc, updates: StyleUpdate[]): Record<string, string[]> {
   const ignoredStyles: Record<string, string[]> = {};
+  updates.forEach((u) => u.nodeIds.forEach((id) => doc.yNode(id)));
   for (const { nodeIds, styles: raw } of updates) {
     for (const id of nodeIds) {
       const node = doc.yNode(id);
@@ -142,16 +153,21 @@ export function updateStyles(doc: MarkupDoc, updates: StyleUpdate[]): Record<str
 }
 
 export function setText(doc: MarkupDoc, updates: { nodeId: string; html: string }[]): void {
-  for (const { nodeId, html } of updates) {
-    const node = doc.yNode(nodeId);
-    if (node.get('type') !== 'text') throw new MarkupError('INVALID_ARGUMENT', `Node ${nodeId} is not a Text node.`);
-    node.set('text', html);
+  for (const { nodeId } of updates) {
+    if (doc.yNode(nodeId).get('type') !== 'text') throw new MarkupError('INVALID_ARGUMENT', `Node ${nodeId} is not a Text node.`);
   }
+  for (const { nodeId, html } of updates) doc.yNode(nodeId).set('text', html);
 }
 
 export function moveNodes(doc: MarkupDoc, moves: Move[]): MoveResult {
   const results: MoveResult['results'] = [];
   const touched = new Set<string>();
+  for (const move of moves) {
+    assertNotRoot(doc.yNode(move.nodeId));
+    if ('before' in move) doc.yNode(move.before);
+    else if ('after' in move) doc.yNode(move.after);
+    else if (move.parentId !== 'root') doc.yNode(move.parentId);
+  }
   for (const move of moves) {
     const node = doc.yNode(move.nodeId);
     assertNotRoot(node);
@@ -191,6 +207,10 @@ function validateParent(doc: MarkupDoc, nodeId: string, parentId: string) {
 export function deleteNodes(doc: MarkupDoc, ids: string[]): void {
   for (const id of ids) {
     const node = doc.nodes.get(id);
+    if (node) assertNotRoot(node);
+  }
+  for (const id of ids) {
+    const node = doc.nodes.get(id);
     if (!node) continue; // already removed with an ancestor in this batch
     assertNotRoot(node);
     detach(doc, id);
@@ -206,6 +226,10 @@ function removeSubtree(doc: MarkupDoc, id: string) {
 }
 
 export function duplicateNodes(doc: MarkupDoc, items: { id: string; parentId?: string }[]): DuplicateResult[] {
+  for (const { id, parentId } of items) {
+    assertNotRoot(doc.yNode(id));
+    if (parentId && !canHaveChildren(doc.yNode(parentId))) throw new MarkupError('INVALID_PARENT', `Node ${parentId} cannot have children.`);
+  }
   return items.map(({ id, parentId }) => {
     const source = doc.yNode(id);
     assertNotRoot(source);
@@ -256,6 +280,7 @@ export function rightEdge(doc: MarkupDoc, rootId: string): number {
 }
 
 export function renameNodes(doc: MarkupDoc, updates: { nodeId: string; name: string }[]): void {
+  updates.forEach((u) => doc.yNode(u.nodeId));
   for (const { nodeId, name } of updates) doc.yNode(nodeId).set('name', name.slice(0, 50));
 }
 

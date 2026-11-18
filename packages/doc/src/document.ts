@@ -180,6 +180,12 @@ export class MarkupDoc {
     this.history.revert(actor, seq);
   }
 
+  /** Clears every working indicator (stale ones from agents that exited without finishing). Not history. */
+  clearWorking(): void {
+    const working = this.ydoc.getMap('working');
+    if (working.size) this.ydoc.transact(() => working.clear(), null);
+  }
+
   working(): Record<string, Actor> {
     return this.ydoc.getMap<Actor>('working').toJSON() as Record<string, Actor>;
   }
@@ -192,28 +198,43 @@ export class MarkupDoc {
   protected mutate<T>(actor: Actor, summary: string | null, fn: () => T): T {
     // Inside a batch, the batch owns the transaction and the single log entry.
     if (this.batchDepth > 0) return fn();
+    return this.run(actor, summary, fn);
+  }
+
+  /**
+   * One actor transaction. Ops validate before writing, so a throw normally changes nothing;
+   * if something was written anyway, the entry is still logged (marked as partial) so no
+   * change goes unattributed. Yjs has no rollback.
+   */
+  private run<T>(actor: Actor, summary: string | null, fn: () => T): T {
     let result!: T;
-    this.ydoc.transact(() => {
-      result = fn();
-      if (summary !== null) this.history.tag(appendEntry(this, actor, summary));
+    let failure: unknown = null;
+    this.ydoc.transact((tr) => {
+      try {
+        result = fn();
+      } catch (err) {
+        failure = err;
+      }
+      const changed = tr.changed.size > 0 || tr.deleteSet.clients.size > 0;
+      if (summary !== null && (failure === null || changed)) {
+        this.history.tag(appendEntry(this, actor, failure === null ? summary : `${summary} (failed partway)`));
+      }
     }, actor);
+    if (failure !== null) throw failure;
     return result;
   }
 
   /** Runs several operations as one transaction: one log entry, one undo step. */
   batch<T>(actor: Actor, summary: string, fn: () => T): T {
     if (this.batchDepth > 0) return fn();
-    let result!: T;
-    this.ydoc.transact(() => {
+    return this.run(actor, summary, () => {
       this.batchDepth++;
       try {
-        result = fn();
+        return fn();
       } finally {
         this.batchDepth--;
       }
-      this.history.tag(appendEntry(this, actor, summary));
-    }, actor);
-    return result;
+    });
   }
 
   setFlags(actor: Actor, ids: string[], flags: { hidden?: boolean; locked?: boolean }, summary?: string): void {

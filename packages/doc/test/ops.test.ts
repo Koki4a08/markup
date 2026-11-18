@@ -160,4 +160,13 @@ describe('node ops', () => {
     expect(origins.length).toBeGreaterThanOrEqual(6);
     for (const o of origins) expect(o).toBe(human);
   });
+
+  it('clearWorking drops indicators left by agents that never finished, without logging', () => {
+    const agent: Actor = { id: 'a1', kind: 'agent', name: 'Claude Code' };
+    doc.setWorking(agent, [artboard], true);
+    const logLength = doc.log().length;
+    doc.clearWorking();
+    expect(doc.working()).toEqual({});
+    expect(doc.log()).toHaveLength(logLength);
+  });
 });

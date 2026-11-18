@@ -59,6 +59,8 @@ export function readLog(doc: MarkupDoc): LogEntry[] {
 export class EntryHistory {
   private readonly um: Y.UndoManager;
   private pendingSeq: number | null = null;
+  /** Seqs logged by this session; an entry here without a stack item changed nothing. */
+  private readonly sessionSeqs = new Set<number>();
 
   constructor(private readonly doc: MarkupDoc) {
     this.um = new Y.UndoManager(historyScope(doc), { trackedOrigins: new Set<unknown>([Object]), captureTimeout: 0 });
@@ -71,6 +73,7 @@ export class EntryHistory {
   /** Called inside the actor's transaction, after its log entry was appended. */
   tag(seq: number) {
     this.pendingSeq = seq;
+    this.sessionSeqs.add(seq);
   }
 
   revert(actor: Actor, seq: number) {
@@ -79,13 +82,23 @@ export class EntryHistory {
       .find((m) => m.get('seq') === seq);
     if (!entry) throw new MarkupError('INVALID_ARGUMENT', `Log entry No. ${seq} does not exist.`);
     if (entry.get('reverted')) throw new MarkupError('INVALID_ARGUMENT', `Log entry No. ${seq} is already reverted.`);
-    const stack = this.um.undoStack;
-    const idx = stack.findIndex((item) => item.meta.get('seq') === seq);
-    if (idx < 0) throw new MarkupError('INVALID_ARGUMENT', `Log entry No. ${seq} was made in another session and cannot be reverted here.`);
-    const [item] = stack.splice(idx, 1);
-    stack.push(item!);
-    this.um.undo();
-    this.um.redoStack.pop();
+    const idx = this.um.undoStack.findIndex((item) => item.meta.get('seq') === seq);
+    if (idx < 0 && !this.sessionSeqs.has(seq)) {
+      throw new MarkupError('INVALID_ARGUMENT', `Log entry No. ${seq} was made in another session and cannot be reverted here.`);
+    }
+    if (idx >= 0) {
+      // Undo against an isolated stack: UndoManager.undo() keeps popping until something changes,
+      // so with the full stack an entry whose effect is gone would silently undo an older one.
+      const rest = this.um.undoStack;
+      const [item] = rest.splice(idx, 1);
+      this.um.undoStack = [item!];
+      try {
+        this.um.undo();
+      } finally {
+        this.um.undoStack = rest;
+        this.um.redoStack = [];
+      }
+    }
     this.doc.ydoc.transact(() => {
       entry.set('reverted', true);
       entry.set('revertedBy', actor.id);

@@ -1,7 +1,7 @@
 import { useCallback, type RefObject } from 'react';
 import type { MarkupDoc, NodeSpec, Styles } from '@markup/doc';
 import { measureNode, parsePxValue, type Rect } from './geometry';
-import { flexDropIndex, hitTest, resizeRect, type Handle } from './interactions';
+import { flexDropIndex, freeformMove, hitTest, resizeRect, type Handle } from './interactions';
 import type { Tool } from './tools';
 import { screenToWorld, type Point, type Viewport } from './viewport';
 import { useDoc } from '../store/DocProvider';
@@ -70,6 +70,7 @@ export function useCanvasGestures(o: GestureOptions) {
 
   const moveSelection = (ids: string[], start: Point, duplicate: boolean) => {
     const canvas = o.canvasRef.current!;
+    const startRects = ids.map((id) => rectOf(id));
     let moved = false;
     let delta = { x: 0, y: 0 };
     track(
@@ -96,9 +97,8 @@ export function useCanvasGestures(o: GestureOptions) {
             const { node, parent, freeform, axis } = parentInfo(doc, id);
             if (freeform) {
               const source = doc.requireNode(ids[i]!);
-              doc.updateStyles(actor, [
-                { nodeIds: [id], styles: { left: Math.round(parsePxValue(source.styles.left) + delta.x), top: Math.round(parsePxValue(source.styles.top) + delta.y) } },
-              ]);
+              const move = freeformMove(source, parent, startRects[i] ?? { x: 0, y: 0, width: 0, height: 0 }, parent.type === 'root' ? null : rectOf(parent.id), delta);
+              doc.updateStyles(actor, [{ nodeIds: [id], styles: move.node }, ...(move.parent ? [{ nodeIds: [parent.id], styles: move.parent }] : [])]);
               return;
             }
             const siblings = parent.children.filter((s) => s !== node.id && !ids.includes(s));
@@ -163,8 +163,12 @@ export function useCanvasGestures(o: GestureOptions) {
       const parentRect = rectOf(parentId)!;
       Object.assign(styles, { position: 'absolute', left: Math.round(worldRect.x - parentRect.x), top: Math.round(worldRect.y - parentRect.y) });
     }
-    const [id] = doc.insertNodes(actor, parentId, [{ ...spec, styles }]);
-    return id!;
+    const needsContainingBlock = parent.type !== 'root' && styles.position === 'absolute' && parent.styles.position === undefined;
+    return doc.batch(actor, `Inserted ${spec.name ?? spec.type}`, () => {
+      if (needsContainingBlock) doc.updateStyles(actor, [{ nodeIds: [parentId], styles: { position: 'relative' } }]);
+      const [id] = doc.insertNodes(actor, parentId, [{ ...spec, styles }]);
+      return id!;
+    });
   };
 
   const drawBox = (start: Point, kind: 'frame' | 'rect') => {

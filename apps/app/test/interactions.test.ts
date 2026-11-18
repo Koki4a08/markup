@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MarkupDoc, type Actor } from '@markup/doc';
-import { hitTest } from '../src/canvas/interactions';
+import { freeformMove, hitTest } from '../src/canvas/interactions';
 import type { Rect } from '../src/canvas/geometry';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
@@ -45,5 +45,31 @@ describe('hitTest', () => {
     expect(hitTest(doc, rootId, { x: 35, y: 35 }, { deep: true, rectOf })).toBe(artboard);
     doc.setFlags(human, [card], { locked: false, hidden: true });
     expect(hitTest(doc, rootId, { x: 35, y: 35 }, { deep: true, rectOf })).toBe(artboard);
+  });
+});
+
+describe('freeformMove', () => {
+  const base = { id: 'n', name: 'n', children: [], locked: false, hidden: false };
+  const parent = (styles: Record<string, string> = {}) => ({ ...base, id: 'p', type: 'frame' as const, parentId: 'ab', styles });
+
+  it('absolute child moves by delta and makes a static parent its containing block', () => {
+    const node = { ...base, type: 'frame' as const, parentId: 'p', styles: { position: 'absolute', left: 10, top: 20 } };
+    expect(freeformMove(node, parent(), { x: 0, y: 0, width: 1, height: 1 }, { x: 0, y: 0, width: 1, height: 1 }, { x: 5, y: -5 })).toEqual({
+      node: { left: 15, top: 15 },
+      parent: { position: 'relative' },
+    });
+  });
+
+  it('static child of a block frame becomes absolute at its measured spot plus delta', () => {
+    const node = { ...base, type: 'frame' as const, parentId: 'p', styles: {} };
+    expect(freeformMove(node, parent({ position: 'relative' }), { x: 130, y: 60, width: 50, height: 50 }, { x: 100, y: 40, width: 300, height: 300 }, { x: 10, y: 10 })).toEqual({
+      node: { position: 'absolute', left: 40, top: 30 },
+    });
+  });
+
+  it('artboards move by delta with no parent change', () => {
+    const node = { ...base, type: 'frame' as const, parentId: 'root', styles: { position: 'absolute', left: 0, top: 0 } };
+    const root = { ...base, id: 'root', type: 'root' as const, parentId: null, styles: {} };
+    expect(freeformMove(node, root, { x: 0, y: 0, width: 1, height: 1 }, null, { x: 100, y: 0 })).toEqual({ node: { left: 100, top: 0 } });
   });
 });

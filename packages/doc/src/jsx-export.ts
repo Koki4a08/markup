@@ -1,4 +1,5 @@
 import type { MarkupDoc } from './document';
+import { htmlToJsx, jsxAttrValue } from './html-to-jsx';
 import type { MarkupNode, Styles, StyleValue } from './schema';
 
 export interface JsxOptions {
@@ -94,13 +95,13 @@ export function toJsx(doc: MarkupDoc, nodeId: string, options: JsxOptions = {}):
     }
     switch (node.type) {
       case 'text':
-        lines.push(`${pad}<p${attrs(node, styles, opts)}>${node.text ?? ''}</p>`);
+        lines.push(`${pad}<p${attrs(node, styles, opts)}>${htmlToJsx(node.text ?? '')}</p>`);
         return;
       case 'image':
-        lines.push(`${pad}<img${attrs(node, styles, opts, [`src="${node.src ?? ''}"`])} />`);
+        lines.push(`${pad}<img${attrs(node, styles, opts, [`src=${jsxAttrValue(node.src ?? '')}`])} />`);
         return;
       case 'svg':
-        lines.push(`${pad}${node.svg ?? ''}`);
+        lines.push(`${pad}${htmlToJsx(node.svg ?? '')}`);
         return;
       default:
         if (node.children.length === 0) {
