@@ -12,19 +12,48 @@ export const PLACEHOLDER_NAME = 'Image unavailable';
 export const usableDataUrl = (v: string | null | undefined): v is string =>
   !!v && SAFE_IMAGE.test(v) && v.length <= MAX_DATA_URL && !/[\s"'()\\<>]/.test(v);
 
-/** Fetches each distinct URL once; failures and unusable results become null. */
+/**
+ * Fetches each distinct URL once, a few at a time; failures, unusable results and anything past the running
+ * byte budget become null (so the caller falls back to a placeholder).
+ */
 export class ImageLoader {
   private readonly cache = new Map<string, Promise<string | null>>();
+  private readonly queue: (() => void)[] = [];
+  private active = 0;
+  private used = 0;
 
-  constructor(private readonly env: CaptureEnv) {}
+  constructor(
+    private readonly env: CaptureEnv,
+    private readonly limits: { imageBytes: number; concurrency: number } = { imageBytes: 40_000_000, concurrency: 6 },
+  ) {}
+
+  private async slot<T>(work: () => Promise<T>): Promise<T> {
+    // A finishing fetch hands its slot straight to the next waiter, so the count never overshoots.
+    if (this.active >= this.limits.concurrency) await new Promise<void>((resolve) => this.queue.push(resolve));
+    else this.active++;
+    try {
+      return await work();
+    } finally {
+      const next = this.queue.shift();
+      if (next) next();
+      else this.active--;
+    }
+  }
+
+  /** Charges a data URL against the budget; null when it is unusable or would exceed it. */
+  admit(v: string | null): string | null {
+    if (!usableDataUrl(v) || this.used + v.length > this.limits.imageBytes) return null;
+    this.used += v.length;
+    return v;
+  }
 
   get(url: string): Promise<string | null> {
     const key = url.trim();
     if (!key) return Promise.resolve(null);
     let hit = this.cache.get(key);
     if (!hit) {
-      hit = this.env.fetchImage(key).then(
-        (v) => (usableDataUrl(v) ? v : null),
+      hit = this.slot(() => this.env.fetchImage(key)).then(
+        (v) => this.admit(v),
         () => null,
       );
       this.cache.set(key, hit);

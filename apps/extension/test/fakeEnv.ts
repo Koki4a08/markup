@@ -200,9 +200,23 @@ function rectOf(el: Element): DOMRect {
   return new DOMRect(x, y, w, h);
 }
 
-export function fakeEnv(images: Record<string, string | null> = {}): CaptureEnv & { fetched: string[] } {
+/**
+ * `textRects` maps a run's trimmed text to its measured box ("x y w h"); runs not listed have no measurement,
+ * as if the env could not measure text.
+ */
+export function fakeEnv(
+  images: Record<string, string | null> = {},
+  textRects: Record<string, string> = {},
+): CaptureEnv & { fetched: string[] } {
   const fetched: string[] = [];
   return {
+    textRect(nodes) {
+      const key = nodes.map((n) => n.textContent ?? '').join('').replace(/\s+/g, ' ').trim();
+      const r = textRects[key];
+      if (!r) return null;
+      const [x = 0, y = 0, w = 0, h = 0] = r.split(/\s+/).map(Number);
+      return new DOMRect(x, y, w, h);
+    },
     fetched,
     style(el, pseudo) {
       if (pseudo === '::before' || pseudo === '::after') {

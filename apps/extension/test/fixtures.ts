@@ -4,6 +4,7 @@ export interface Fixture {
   html: string;
   targets: string[];
   images?: Record<string, string | null>;
+  textRects?: Record<string, string>;
 }
 
 export const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -90,6 +91,30 @@ export const FIXTURES: Fixture[] = [
       <input id="email" placeholder="Email" data-rect="0 0 200 32" style="border: 1px solid rgb(200, 200, 200); padding: 4px 8px; font-size: 14px">
       <input id="name" value="Ada" data-rect="0 40 200 32" style="border: 1px solid rgb(200, 200, 200)">
       <iframe id="frame" src="https://video.example.com/embed/1" data-rect="0 80 200 40"></iframe>
+    </div>`,
+  },
+  {
+    name: 'icon then text',
+    targets: ['t'],
+    textRects: { Download: '20 4 70 16' },
+    html: `<a id="t" data-rect="0 0 120 24" style="display: inline-block; color: rgb(0, 0, 238)"><svg data-rect="0 4 16 16" viewBox="0 0 16 16" width="16" height="16"><path d="M0 0h16v16H0z" fill="currentColor"></path></svg> Download</a>`,
+  },
+  {
+    name: 'hidden flex child',
+    targets: ['t'],
+    html: `<div id="t" data-rect="0 0 300 40" style="display: flex; gap: 8px">
+      <div id="a" data-rect="0 0 50 40" style="background-color: rgb(255, 0, 0)"></div>
+      <div id="b" data-rect="58 0 50 40" style="visibility: hidden; background-color: rgb(0, 255, 0)"></div>
+      <div id="c" data-rect="116 0 50 40" style="background-color: rgb(0, 0, 255)"></div>
+    </div>`,
+  },
+  {
+    name: 'zero-size flex child',
+    targets: ['t'],
+    html: `<div id="t" data-rect="0 0 300 40" style="display: flex; gap: 8px">
+      <div id="a" data-rect="0 0 50 40" style="background-color: rgb(255, 0, 0)"></div>
+      <div id="b" data-rect="58 0 0 40" style="overflow: hidden"></div>
+      <div id="c" data-rect="66 0 50 40" style="background-color: rgb(0, 0, 255)"></div>
     </div>`,
   },
   {

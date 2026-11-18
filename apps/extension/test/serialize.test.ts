@@ -1,16 +1,16 @@
 import { parseStyleAttr } from '@markup/doc';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { capture } from '../src/capture/serialize';
+import { capture, TOO_LARGE, type CaptureLimits } from '../src/capture/serialize';
 import { fakeEnv } from './fakeEnv';
 import { fixture, PNG } from './fixtures';
 
 const META = { title: 'Acme — Home', url: 'https://acme.test/' };
 
-async function run(name: string) {
+async function run(name: string, limits?: CaptureLimits) {
   const f = fixture(name);
   document.body.innerHTML = f.html;
-  const env = fakeEnv(f.images);
-  const html = await capture(f.targets.map((id) => document.getElementById(id)!), env, META);
+  const env = fakeEnv(f.images, f.textRects);
+  const html = await capture(f.targets.map((id) => document.getElementById(id)!), env, META, limits);
   const holder = document.createElement('div');
   holder.innerHTML = html;
   const root = holder.querySelector(':scope > div')!;
@@ -150,6 +150,58 @@ describe('capture', () => {
     expect(name!.querySelector('p')!.textContent).toBe('Ada');
     expect(iframe!.getAttribute('layer-name')).toBe('video.example.com');
     expect(iframe!.textContent).toBe('video.example.com');
+  });
+
+  it('text after an inline-level sibling keeps its measured left edge', async () => {
+    const { root } = await run('icon then text');
+    const frame = root.firstElementChild!;
+    const svg = frame.querySelector('svg')!;
+    const p = frame.querySelector('p')!;
+    expect(css(svg)).toMatchObject({ left: '0px', top: '4px' });
+    expect(p.textContent).toBe('Download');
+    expect(css(p)).toMatchObject({ position: 'absolute', left: '20px', top: '4px', width: '100px', color: 'rgb(0, 0, 238)' });
+  });
+
+  it('a flex container with a hidden child falls back to absolute so siblings keep their place', async () => {
+    for (const name of ['hidden flex child', 'zero-size flex child']) {
+      const { root, html } = await run(name);
+      const frame = root.firstElementChild!;
+      expect(css(frame).display, name).toBeUndefined();
+      const kids = [...frame.children];
+      expect(kids, name).toHaveLength(2);
+      expect(css(kids[1]).left, name).toBe(name === 'hidden flex child' ? '116px' : '66px');
+      expect(html, name).not.toMatch(/rgb\(0, 255, 0\)/);
+    }
+  });
+
+  it('images past the byte budget become placeholders', async () => {
+    const { root } = await run('images', { imageBytes: PNG.length * 1.5 });
+    const frame = root.firstElementChild!;
+    // The background image is charged first; the <img> no longer fits.
+    expect(css(frame).backgroundImage).toContain(PNG);
+    expect(frame.querySelector('img')).toBeNull();
+    expect(frame.querySelectorAll('[layer-name="Image unavailable"]')).toHaveLength(2);
+  });
+
+  it('caps concurrent image fetches', async () => {
+    document.body.innerHTML = `<div id="t" data-rect="0 0 1000 10">${Array.from({ length: 10 }, (_, i) => `<img src="https://cdn.test/${i}.png" data-rect="${i * 20} 0 10 10">`).join('')}</div>`;
+    let inFlight = 0;
+    let peak = 0;
+    const env = fakeEnv();
+    env.fetchImage = async () => {
+      peak = Math.max(peak, ++inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight--;
+      return PNG;
+    };
+    const html = await capture([document.getElementById('t')!], env, META, { concurrency: 3 });
+    expect(peak).toBe(3);
+    expect(html.match(/<img /g)).toHaveLength(10);
+  });
+
+  it('a page past the element cap fails with a clear message', async () => {
+    document.body.innerHTML = `<div id="t" data-rect="0 0 100 100">${'<div data-rect="0 0 10 10"></div>'.repeat(5)}</div>`;
+    await expect(capture([document.getElementById('t')!], fakeEnv(), META, { maxNodes: 3 })).rejects.toThrow(TOO_LARGE);
   });
 
   it('two targets sit 80px apart', async () => {
