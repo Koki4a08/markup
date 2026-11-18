@@ -132,3 +132,13 @@ export async function backgroundDecls(cs: CSSStyleDeclaration, images: ImageLoad
   }
   return out;
 }
+
+/** The pixels the user sees, cut from a screenshot of the visible tab (private, cross-origin or tainted images). */
+export async function screenImage(env: CaptureEnv, images: ImageLoader, el: Element): Promise<string | null> {
+  if (!env.snapshotRegion) return null;
+  try {
+    return images.admit(await env.snapshotRegion(env.rect(el)));
+  } catch {
+    return null;
+  }
+}

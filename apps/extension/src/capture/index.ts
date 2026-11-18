@@ -1,17 +1,22 @@
+import type { CaptureMode, CaptureTargets } from '../picker/picker';
 import { browserEnv, type CaptureEnv } from './env';
+import { captureExact } from './exact';
 import { capture } from './serialize';
 
 export { capture } from './serialize';
+export { captureExact } from './exact';
 
 /**
- * Captures the targets and puts the result on the clipboard. Must be called from the user gesture: the clipboard
+ * Captures the targets (exact mode unless `simplified` is asked for) and puts the result on the clipboard. Must be called from the user gesture: the clipboard
  * write starts synchronously with a promise-valued ClipboardItem, so slow image fetches cannot outlive the gesture's
  * transient activation. Falls back to a copy event via execCommand when the async clipboard refuses.
  */
-export async function captureAndCopy(targets: Element[] | 'page', env: CaptureEnv = browserEnv()): Promise<void> {
+export async function captureAndCopy(targets: CaptureTargets, mode?: CaptureMode | CaptureEnv, env?: CaptureEnv): Promise<void> {
+  // `captureAndCopy(targets, env)` still means the default (exact) mode.
+  if (typeof mode === 'object') [mode, env] = ['exact', mode];
   const meta = { title: document.title, url: location.href };
   const plain = `${meta.title}\n${meta.url}`;
-  const html = capture(targets, env, meta);
+  const html = (mode === 'simplified' ? capture : captureExact)(targets, env ?? browserEnv(), meta);
   const htmlBlob = html.then((h) => new Blob([h], { type: 'text/html' }));
   htmlBlob.catch(() => {}); // Rejections surface through `html` below.
   let written: Promise<void>;

@@ -12,7 +12,7 @@ const STYLE = `
 .toast.error { background: #b91c1c; }
 `;
 
-export const HINT = '↑↓ adjust · Enter capture · ⌘Enter page · Esc exit';
+export const HINT = '↑↓ adjust · Enter capture · ⌥Enter simplified · ⌘Enter page · Esc exit';
 
 export class Overlay {
   readonly host: HTMLElement;

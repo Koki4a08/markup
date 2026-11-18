@@ -11,6 +11,7 @@ import type { ArrangeItem, PageUpdate } from './pages';
 import * as tokens from './tokens';
 import type { Token, TokenEdit, TokenQuery, TokenResult } from './tokens';
 import type { DuplicateResult, Move, MoveResult, StyleUpdate } from './ops';
+import type { Dialect } from './styles';
 import { createYNode, newId, snapshotNode, type YNode } from './ynode';
 import {
   MarkupError,
@@ -146,9 +147,10 @@ export class MarkupDoc {
     return { nodeIds, ignoredStyles: ignored };
   }
 
-  updateStyles(actor: Actor, updates: StyleUpdate[], summary?: string): { ignoredStyles: Record<string, string[]> } {
+  /** `dialect: 'any'` (the Inspector's free-form styles) keeps margins, grid and other CSS outside Markup's layout dialect. */
+  updateStyles(actor: Actor, updates: StyleUpdate[], summary?: string, opts: { dialect?: Dialect } = {}): { ignoredStyles: Record<string, string[]> } {
     const count = new Set(updates.flatMap((u) => u.nodeIds)).size;
-    return { ignoredStyles: this.mutate(actor, summary ?? `Updated styles on ${plural(count, 'node')}`, () => ops.updateStyles(this, updates)) };
+    return { ignoredStyles: this.mutate(actor, summary ?? `Updated styles on ${plural(count, 'node')}`, () => ops.updateStyles(this, updates, opts.dialect)) };
   }
 
   setText(actor: Actor, updates: { nodeId: string; html: string }[], summary?: string): void {

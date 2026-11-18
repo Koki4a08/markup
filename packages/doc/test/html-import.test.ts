@@ -129,3 +129,42 @@ describe('writeHtml', () => {
     expect(doc.requireNode(artboard).styles.padding).toBe('8px');
   });
 });
+
+describe("the 'any' dialect", () => {
+  it('normalizeStyles keeps margin, grid, inline display and text props on a frame', () => {
+    const r = normalizeStyles(
+      { 'margin-top': ' 12px ', display: 'grid', gridTemplateColumns: '1fr 2fr', color: 'red', fontSize: '14px' },
+      { type: 'frame', isArtboard: false },
+      'any',
+    );
+    expect(r.ignored).toEqual([]);
+    expect(r.styles).toEqual({ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 2fr', color: 'red', fontSize: '14px' });
+    for (const display of ['inline', 'inline-block', 'table-cell', 'contents', 'list-item']) {
+      expect(normalizeStyles({ display }, { type: 'frame', isArtboard: false }, 'any').styles).toEqual({ display });
+    }
+  });
+
+  it('parseHtml passes the dialect through; the default stays strict', () => {
+    const html = '<div style="display: grid; margin: 4px; color: red"><span style="display: inline; margin-left: 2px">a</span></div>';
+    const any = parseHtml(html, { dialect: 'any' });
+    expect(any.ignored).toEqual([]);
+    expect(any.specs[0]).toMatchObject({ type: 'frame', styles: { display: 'grid', margin: '4px', color: 'red' } });
+    expect(any.specs[0]!.children![0]).toMatchObject({ type: 'text', styles: { display: 'inline', marginLeft: '2px' } });
+    expect(parseHtml(html).ignored.sort()).toEqual(['color', 'display', 'margin', 'marginLeft']);
+  });
+
+  it("parseHtml keeps a text node's edge whitespace in the 'any' dialect (it is inline flow)", () => {
+    const { specs } = parseHtml('<div><span style="display:inline">Hello <b>bold</b> </span><span style="display:inline"> world</span></div>', { dialect: 'any' });
+    expect(specs[0]!.children!.map((c) => c.text)).toEqual(['Hello <b>bold</b> ', ' world']);
+  });
+
+  it('updateStyles accepts the dialect; default strict', () => {
+    const { doc, artboard } = setup();
+    const strict = doc.updateStyles(agent, [{ nodeIds: [artboard], styles: { marginTop: '4px' } }]);
+    expect(strict.ignoredStyles[artboard]).toEqual(['marginTop']);
+    expect(doc.requireNode(artboard).styles.marginTop).toBeUndefined();
+    const any = doc.updateStyles(agent, [{ nodeIds: [artboard], styles: { marginTop: '4px', display: 'grid' } }], undefined, { dialect: 'any' });
+    expect(any.ignoredStyles).toEqual({});
+    expect(doc.requireNode(artboard).styles).toMatchObject({ marginTop: '4px', display: 'grid' });
+  });
+});

@@ -1,6 +1,8 @@
 import { Overlay } from './overlay';
 
 export type CaptureTargets = Element[] | 'page';
+/** `exact` keeps the page's structure and CSS; `simplified` re-derives it into Markup's flex/absolute dialect. */
+export type CaptureMode = 'exact' | 'simplified';
 
 const SWALLOWED = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'auxclick', 'dblclick', 'contextmenu'] as const;
 
@@ -14,7 +16,8 @@ export class Picker {
 
   constructor(
     private readonly doc: Document,
-    private readonly onCapture: (targets: CaptureTargets) => void,
+    /** Called with no mode for the default (exact) capture, and with 'simplified' when Alt was held. */
+    private readonly onCapture: (targets: CaptureTargets, mode?: CaptureMode) => void,
   ) {
     this.win = doc.defaultView!;
   }
@@ -101,8 +104,8 @@ export class Picker {
       }
       case 'Enter':
         this.eat(e);
-        if (e.ctrlKey || e.metaKey) this.onCapture('page');
-        else this.capture();
+        if (e.ctrlKey || e.metaKey) this.emit('page', e.altKey);
+        else this.capture(e.altKey);
         return;
       case 'Escape':
         this.eat(e);
@@ -123,17 +126,22 @@ export class Picker {
       this.selected = this.selected.includes(el) ? this.selected.filter((x) => x !== el) : [...this.selected, el];
       this.overlay?.showSelected(this.selected);
     } else {
-      this.capture();
+      this.capture(e.altKey);
     }
   };
 
-  private capture(): void {
+  private emit(targets: CaptureTargets, simplified: boolean): void {
+    if (simplified) this.onCapture(targets, 'simplified');
+    else this.onCapture(targets);
+  }
+
+  private capture(simplified = false): void {
     const targets = [...this.selected];
     if (this.target && !targets.includes(this.target)) targets.push(this.target);
     if (targets.length === 0) return;
     this.selected = [];
     this.overlay?.showSelected([]);
-    this.onCapture(targets);
+    this.emit(targets, simplified);
   }
 
   private swallow = (e: Event): void => this.eat(e);

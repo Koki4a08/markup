@@ -55,3 +55,18 @@ describe('captureAndCopy', () => {
     await expect(captureAndCopy([], fakeEnv())).rejects.toThrow('Nothing to capture');
   });
 });
+
+describe('captureAndCopy modes', () => {
+  it('copies the exact snapshot by default and the simplified one on request', async () => {
+    const el = setup();
+    const write = vi.fn(async (_items: FakeItem[]) => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { write }, configurable: true });
+    await captureAndCopy([el], fakeEnv());
+    await captureAndCopy([el], 'simplified', fakeEnv());
+    await captureAndCopy([el], 'exact', fakeEnv());
+    const html = await Promise.all(write.mock.calls.map(async (c) => (await c[0][0]!.items['text/html']!).text()));
+    expect(html[0]).toContain('data-markup-dialect="any"');
+    expect(html[1]).not.toContain('data-markup-dialect');
+    expect(html[2]).toContain('data-markup-dialect="any"');
+  });
+});

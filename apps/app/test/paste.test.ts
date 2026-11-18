@@ -182,4 +182,28 @@ describe('paste', () => {
     const sibs = doc.requireNode(rootId).children;
     expect(sibs.indexOf(ids[0]!)).toBeGreaterThan(sibs.indexOf(frame));
   });
+
+  it('a snapshot root marked data-markup-dialect="any" keeps margin, grid and inline display', async () => {
+    const { doc, rootId } = setup();
+    const html =
+      '<!--markup:snapshot v1--><div data-markup-snapshot="v1" layer-name="Page" data-source="https://a.test/" data-markup-dialect="any" style="position:relative;width:300px;height:100px">' +
+      '<div style="position:absolute;left:0px;top:0px;display:grid;grid-template-columns:100px 200px;margin-top:12px">' +
+      '<p style="display:inline;margin-left:4px">Hi</p></div></div>';
+    const ids = await pasteIntoDoc(doc, human, { html }, target(rootId));
+    expect(ids).toHaveLength(1);
+    const [root, grid, text] = allNodes(doc, ids[0]!);
+    expect(root!.name).toBe('Page');
+    expect(grid!.styles).toMatchObject({ display: 'grid', gridTemplateColumns: '100px 200px', marginTop: '12px' });
+    expect(text!.type).toBe('text');
+    expect(text!.styles).toMatchObject({ display: 'inline', marginLeft: '4px' });
+  });
+
+  it('without the dialect attribute a snapshot stays in the strict dialect', async () => {
+    const { doc, rootId } = setup();
+    const html = '<div data-markup-snapshot="v1" style="position:relative;width:10px;height:10px"><div style="margin-top:12px;display:grid"></div></div>';
+    const ids = await pasteIntoDoc(doc, human, { html }, target(rootId));
+    const [, child] = allNodes(doc, ids[0]!);
+    expect(child!.styles.marginTop).toBeUndefined();
+    expect(child!.styles.display).toBeUndefined();
+  });
 });

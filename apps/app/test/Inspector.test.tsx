@@ -69,6 +69,20 @@ describe('Inspector', () => {
     expect(doc.requireNode(a).styles.alignSelf).toBe('stretch');
   });
 
+  it('Other styles edits use the permissive dialect (a pasted margin can be edited)', () => {
+    const { doc, a, mount } = setup();
+    doc.updateStyles(human, [{ nodeIds: [a], styles: { marginTop: '4px' } }], undefined, { dialect: 'any' });
+    mount([a]);
+    const field = screen.getByLabelText('marginTop') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '12px' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(doc.requireNode(a).styles.marginTop).toBe('12px');
+    fireEvent.change(screen.getByLabelText('New property'), { target: { value: 'margin-left' } });
+    fireEvent.change(screen.getByLabelText('New value'), { target: { value: '8px' } });
+    fireEvent.submit(screen.getByLabelText('New property').closest('form')!);
+    expect(doc.requireNode(a).styles.marginLeft).toBe('8px');
+  });
+
   it('shows an empty state with no selection', () => {
     const { mount } = setup();
     mount([]);
