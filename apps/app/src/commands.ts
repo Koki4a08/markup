@@ -4,6 +4,10 @@ import type { Tool } from './canvas/tools';
 import { pasteIntoDoc, readClipboard } from './paste';
 import type { Point } from './canvas/viewport';
 import { copyAsCode, copyAsPng, exportNodes } from './export/actions';
+import { copyHtml, copyText } from './export/clipboard';
+import { nodesPayload, nodesToHtml } from './clipboard/nodes';
+import { nodeLink, pageLink } from '@markup/protocol';
+import { copyStyles, pasteStyles, removeFlex, reorder, ungroup } from './canvasOps';
 
 export interface CommandContext {
   doc: MarkupDoc;
@@ -47,6 +51,13 @@ function wrap(ctx: CommandContext, kind: 'frame' | 'flex') {
     return w!;
   });
   ctx.setSelection([wrapper]);
+}
+
+/** markup:// links to the nodes, one per line; the page's link when there are none. */
+function links(ctx: CommandContext, ids: string[]): string {
+  const { doc } = ctx;
+  if (ids.length) return ids.map((id) => nodeLink(doc.fileId, id)).join('\n');
+  return pageLink(doc.fileId, doc.pageOfNode(ctx.rootId));
 }
 
 /** Runs an async export or copy action and reports its outcome through ctx.notify; never throws. */
@@ -136,11 +147,58 @@ export function runCommand(command: Command, ctx: CommandContext): void {
       if (ids.length) report(ctx, 'Could not copy', () => copyAsPng(doc, ids));
       return;
     }
+    case 'deselect':
+      return ctx.setSelection([]);
+    case 'copy': {
+      const ids = selected(ctx);
+      if (ids.length) report(ctx, 'Could not copy', async () => (await copyHtml(nodesPayload(doc, ids), links(ctx, ids)), ''));
+      return;
+    }
+    case 'copyLink':
+      report(ctx, 'Could not copy the link', async () => (await copyText(links(ctx, selected(ctx))), 'Link copied'));
+      return;
+    case 'copyHtml': {
+      const ids = selected(ctx);
+      if (!ids.length) return;
+      const html = nodesToHtml(doc, ids);
+      report(ctx, 'Could not copy', async () => (await copyHtml(html, html), 'Copied as HTML'));
+      return;
+    }
+    case 'copySvg': {
+      const svgs = selected(ctx)
+        .map((id) => doc.requireNode(id))
+        .filter((n) => n.type === 'svg' && n.svg);
+      if (svgs.length) report(ctx, 'Could not copy', async () => (await copyText(svgs.map((n) => n.svg!).join('\n')), 'Copied as SVG'));
+      return;
+    }
+    case 'copyStyles': {
+      const [id] = selected(ctx);
+      if (id && copyStyles(doc, id)) ctx.notify?.('Styles copied');
+      return;
+    }
+    case 'pasteStyles':
+      pasteStyles(doc, actor, selected(ctx));
+      return;
+    case 'removeFlex':
+      removeFlex(doc, actor, selected(ctx));
+      return;
+    case 'ungroup': {
+      const moved = ungroup(doc, actor, selected(ctx));
+      if (moved.length) ctx.setSelection(moved);
+      return;
+    }
+    case 'bringToFront':
+    case 'sendToBack':
+    case 'moveForward':
+    case 'moveBackward':
+      reorder(doc, actor, selected(ctx), command);
+      return;
+    case 'paste':
     case 'pasteOnTop':
     case 'pasteToReplace':
       report(ctx, 'Could not paste', async () => {
         const data = await readClipboard();
-        const mode = command === 'pasteOnTop' ? 'on-top' : 'replace';
+        const mode = command === 'paste' ? 'paste' : command === 'pasteOnTop' ? 'on-top' : 'replace';
         const ids = await pasteIntoDoc(doc, actor, data, { selection: ctx.getSelection(), rootId: ctx.rootId, viewportCenter: ctx.viewportCenter?.() ?? { x: 0, y: 0 }, mode });
         if (ids.length) ctx.setSelection(ids);
         return ids.length ? '' : 'Nothing to paste.';

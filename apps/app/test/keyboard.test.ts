@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MarkupDoc, type Actor, ActorUndo } from '@markup/doc';
-import { resolveShortcut } from '../src/keyboard';
+import { resolveShortcut, shortcutLabel } from '../src/keyboard';
 import { runCommand, type CommandContext } from '../src/commands';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
@@ -22,6 +22,36 @@ describe('keymap', () => {
     expect(resolveShortcut(key('v', { meta: true, shift: true }), true)).toBe('pasteOnTop');
     expect(resolveShortcut(key('r', { ctrl: true, shift: true }), false)).toBe('pasteToReplace');
     expect(resolveShortcut(key('v', { meta: true }), true)).toBeNull();
+  });
+
+  it('maps the context menu commands', () => {
+    expect(resolveShortcut(key('c', { ctrl: true }), false)).toBe('copy');
+    expect(resolveShortcut(key('c', { meta: true }), true)).toBe('copy');
+    expect(resolveShortcut(key('l', { ctrl: true }), false)).toBe('copyLink');
+    expect(resolveShortcut(key('Escape', { shift: true }, 'Escape'), false)).toBe('deselect');
+    expect(resolveShortcut(key('Escape', {}, 'Escape'), false)).toBe('selectParent');
+    expect(resolveShortcut(key('c', { ctrl: true, alt: true }), false)).toBe('copyStyles');
+    expect(resolveShortcut(key('v', { meta: true, alt: true }), true)).toBe('pasteStyles');
+    expect(resolveShortcut(key('a', { shift: true, alt: true }), false)).toBe('removeFlex');
+    expect(resolveShortcut(key('g', { ctrl: true, shift: true }), false)).toBe('ungroup');
+    expect(resolveShortcut(key(']', {}, 'BracketRight'), false)).toBe('bringToFront');
+    expect(resolveShortcut(key('[', {}, 'BracketLeft'), false)).toBe('sendToBack');
+    expect(resolveShortcut(key(']', { ctrl: true }, 'BracketRight'), false)).toBe('moveForward');
+    expect(resolveShortcut(key('[', { meta: true }, 'BracketLeft'), true)).toBe('moveBackward');
+    expect(resolveShortcut(key('v', { ctrl: true }), false)).toBeNull();
+  });
+
+  it('formats shortcuts per platform', () => {
+    expect(shortcutLabel('copyPng', false)).toBe('Ctrl+Shift+C');
+    expect(shortcutLabel('copyPng', true)).toBe('⇧⌘C');
+    expect(shortcutLabel('copyStyles', false)).toBe('Ctrl+Alt+C');
+    expect(shortcutLabel('copyStyles', true)).toBe('⌥⌘C');
+    expect(shortcutLabel('removeFlex', false)).toBe('Shift+Alt+A');
+    expect(shortcutLabel('copyReact', true)).toBe('⌥R');
+    expect(shortcutLabel('deselect', false)).toBe('Shift+Esc');
+    expect(shortcutLabel('moveForward', false)).toBe('Ctrl+]');
+    expect(shortcutLabel('selectChildren', false)).toBe('Enter');
+    expect(shortcutLabel('copyHtml', false)).toBe('');
   });
 
   it('maps tools and mod shortcuts per platform', () => {

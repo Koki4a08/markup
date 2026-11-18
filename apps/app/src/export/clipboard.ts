@@ -7,6 +7,25 @@ export async function copyText(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
 }
 
+/** Writes HTML with a plain-text alternative; falls back to a copy event where the async clipboard cannot write HTML. */
+export async function copyHtml(html: string, text: string): Promise<void> {
+  if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+    await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })]);
+    return;
+  }
+  const onCopy = (e: ClipboardEvent) => {
+    e.clipboardData?.setData('text/html', html);
+    e.clipboardData?.setData('text/plain', text);
+    e.preventDefault();
+  };
+  document.addEventListener('copy', onCopy, true);
+  try {
+    if (!document.execCommand?.('copy')) throw new Error('The clipboard is not available here.');
+  } finally {
+    document.removeEventListener('copy', onCopy, true);
+  }
+}
+
 export async function copyImage(bytes: Uint8Array, mimeType = 'image/png'): Promise<void> {
   if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('Copying images is not supported here.');
   await navigator.clipboard.write([new ClipboardItem({ [mimeType]: new Blob([bytes as BlobPart], { type: mimeType }) })]);
