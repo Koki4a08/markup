@@ -1,6 +1,8 @@
 import * as Y from 'yjs';
 import { parseHtml } from './html-import';
 import * as ops from './ops';
+import * as tokens from './tokens';
+import type { Token, TokenEdit, TokenQuery, TokenResult } from './tokens';
 import type { DuplicateResult, Move, MoveResult, StyleUpdate } from './ops';
 import { createYNode, newId, snapshotNode, type YNode } from './ynode';
 import {
@@ -147,6 +149,18 @@ export class MarkupDoc {
 
   setWorking(actor: Actor, artboardIds: string[] | 'all', on: boolean): void {
     this.mutate(actor, () => ops.setWorking(this, actor, artboardIds, on));
+  }
+
+  createTokens(actor: Actor, list: Token[]): TokenResult[] {
+    return this.mutate(actor, () => tokens.createTokens(this, list));
+  }
+
+  setTokens(actor: Actor, edits: TokenEdit[]): TokenResult[] {
+    return this.mutate(actor, () => tokens.setTokens(this, edits));
+  }
+
+  getTokens(q?: TokenQuery): Token[] | string {
+    return tokens.getTokens(this, q);
   }
 
   working(): Record<string, Actor> {
