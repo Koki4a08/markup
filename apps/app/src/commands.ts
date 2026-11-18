@@ -1,6 +1,7 @@
 import type { Actor, ActorUndo, MarkupDoc, Styles } from '@markup/doc';
 import type { Command } from './keyboard';
 import type { Tool } from './canvas/tools';
+import { copyAsCode, copyAsPng, exportNodes } from './export/actions';
 
 export interface CommandContext {
   doc: MarkupDoc;
@@ -14,6 +15,8 @@ export interface CommandContext {
   zoomTo(zoom: number): void;
   startRename(id: string): void;
   collapseLayers(): void;
+  /** Shows a short status message (copy and export results). */
+  notify?(message: string): void;
 }
 
 /** Selected ids that still exist and are not page roots, in document order of their parent. */
@@ -40,6 +43,14 @@ function wrap(ctx: CommandContext, kind: 'frame' | 'flex') {
     return w!;
   });
   ctx.setSelection([wrapper]);
+}
+
+/** Runs an async export or copy action and reports its outcome through ctx.notify; never throws. */
+function report(ctx: CommandContext, failure: string, action: () => Promise<string>): void {
+  action().then(
+    (message) => message && ctx.notify?.(message),
+    (e: unknown) => ctx.notify?.(`${failure}: ${e instanceof Error ? e.message : String(e)}`),
+  );
 }
 
 export function runCommand(command: Command, ctx: CommandContext): void {
@@ -108,5 +119,24 @@ export function runCommand(command: Command, ctx: CommandContext): void {
       return wrap(ctx, 'flex');
     case 'collapseLayers':
       return ctx.collapseLayers();
+    case 'exportSelection': {
+      const ids = selected(ctx);
+      if (ids.length) report(ctx, 'Could not export', async () => {
+        const n = await exportNodes(doc, ids);
+        return n ? `Exported ${n} file${n === 1 ? '' : 's'}` : '';
+      });
+      return;
+    }
+    case 'copyPng': {
+      const ids = selected(ctx);
+      if (ids.length) report(ctx, 'Could not copy', () => copyAsPng(doc, ids));
+      return;
+    }
+    case 'copyReact':
+    case 'copyTailwind': {
+      const ids = selected(ctx);
+      if (ids.length) report(ctx, 'Could not copy', () => copyAsCode(doc, ids, command === 'copyReact' ? 'inline-styles' : 'tailwind'));
+      return;
+    }
   }
 }

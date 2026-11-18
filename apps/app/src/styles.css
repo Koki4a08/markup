@@ -1227,3 +1227,72 @@ body {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+
+/* Export */
+.export-row {
+  display: grid;
+  grid-template-columns: 76px 1fr auto;
+  gap: 8px;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.export-actions .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.export-actions .text-button:last-child {
+  justify-self: end;
+}
+
+.export-actions .text-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.inline-status {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 20;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+}
+
+.copy-menu-item {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.copy-menu-item:hover,
+.copy-menu-item:focus-visible {
+  background: var(--focus-soft);
+}
+
+.copy-menu-item kbd {
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11px;
+}

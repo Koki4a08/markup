@@ -17,6 +17,7 @@ import { LayersPanel } from './panels/LayersPanel';
 import { SelectionProvider, useSelection } from './selection';
 import { useDoc } from './store/DocProvider';
 import { usePages } from './store/hooks';
+import { CopyMenu, type CopyMenuState } from './export/CopyMenu';
 import { sanitizeText } from './canvas/NodeView';
 import { useTabs, useWorkspace } from './workspace/WorkspaceProvider';
 
@@ -47,6 +48,8 @@ function EditorShell() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [revealId, setRevealId] = useState<string | null>(null);
+  const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
+  const [toast, setToast] = useState('');
   const [dragTick, setDragTick] = useState(0);
   const bumpDrag = useCallback(() => setDragTick((t) => t + 1), []);
   const fileName = useTabs().find((t) => t.fileId === doc.fileId)?.name ?? doc.name;
@@ -115,9 +118,30 @@ function EditorShell() {
       zoomTo: (zoom) => setViewport((v) => ({ ...v, zoom })),
       startRename: setRenamingId,
       collapseLayers: () => setCollapseSignal((n) => n + 1),
+      notify: setToast,
     }),
     [doc, actor, undo, rootId, selection, zoomToFit],
   );
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onMenu = (e: MouseEvent) => {
+      const hit = (e.target as HTMLElement).closest<HTMLElement>('[data-node-id]')?.getAttribute('data-node-id');
+      if (hit && !selection.get().includes(hit) && doc.getNode(hit)?.type !== 'root') selection.set([hit]);
+      if (!selection.get().some((id) => doc.getNode(id)?.type !== 'root')) return;
+      e.preventDefault();
+      setCopyMenu({ x: e.clientX, y: e.clientY });
+    };
+    el.addEventListener('contextmenu', onMenu);
+    return () => el.removeEventListener('contextmenu', onMenu);
+  }, [doc, selection, rootId]);
 
   useEffect(() => {
     const mac = isMacPlatform();
@@ -242,6 +266,12 @@ function EditorShell() {
         />
         <RightPanel comments={{ activePageId: page.id, filter: commentFilter, onFilter: setCommentFilter, selectedId: threadId, onSelect: openThread }} />
       </main>
+      {copyMenu && <CopyMenu at={copyMenu} onClose={() => setCopyMenu(null)} onPick={(command) => runCommand(command, ctx)} />}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
