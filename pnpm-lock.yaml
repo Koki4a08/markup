@@ -96,6 +96,9 @@ importers:
 
   apps/extension:
     devDependencies:
+      '@markup/doc':
+        specifier: workspace:*
+        version: link:../../packages/doc
       '@types/chrome':
         specifier: ^0.1.0
         version: 0.1.43
