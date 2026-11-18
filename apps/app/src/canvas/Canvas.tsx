@@ -5,7 +5,7 @@ import { worldToScreen, zoomAt, type Viewport } from './viewport';
 import { useChildren, useDeep, useNode, useWorking } from '../store/hooks';
 import { useDoc } from '../store/DocProvider';
 import { ensureFontsLoaded } from '../fonts/fontLoader';
-import { listLocalFonts } from '../fonts/localFonts';
+import { knownLocalFonts, listLocalFonts } from '../fonts/localFonts';
 
 interface CanvasProps {
   rootId: string;
@@ -128,17 +128,14 @@ function usedFamilies(doc: ReturnType<typeof useDoc>['doc'], rootId: string): st
   return [...families].sort();
 }
 
-/** Loads the Google Fonts the active page uses, unless the machine already has them. */
+/** Loads the Google Fonts the active page uses right away, skipping families already known to be local. */
 function useFontLoading(rootId: string) {
   const { doc } = useDoc();
   const families = useDeep(doc.nodes, () => usedFamilies(doc, rootId));
   useEffect(() => {
     if (!families.length) return;
-    let live = true;
-    void listLocalFonts().then((local) => live && ensureFontsLoaded(families, local));
-    return () => {
-      live = false;
-    };
+    ensureFontsLoaded(families, knownLocalFonts());
+    void listLocalFonts(); // warms the list when access was already granted; never prompts or blocks
   }, [families]);
 }
 
