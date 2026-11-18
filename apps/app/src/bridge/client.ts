@@ -1,14 +1,27 @@
 import { MarkupError, runDocTool, type Actor, type MarkupDoc } from '@markup/doc';
-import { BRIDGE_PORT, DOM_TOOLS, type BridgeErrorCode, type BridgeMessage, type DocToolName, type DomToolName, type RequestMsg, type ResponseMsg } from '@markup/protocol';
+import {
+  BRIDGE_PORT,
+  DOM_TOOLS,
+  RESOURCE_TOOLS,
+  type BridgeErrorCode,
+  type BridgeMessage,
+  type DocToolName,
+  type DomToolName,
+  type FileInfo,
+  type RequestMsg,
+  type ResourceToolName,
+  type ResponseMsg,
+} from '@markup/protocol';
+import type { Workspace } from '../workspace/Workspace';
+import { runResourceTool } from './resourceTools';
 
 export type DomTools = Record<DomToolName, (params: unknown) => unknown | Promise<unknown>>;
 export type BridgeStatus = 'connecting' | 'connected' | 'offline';
 
 export interface BridgeOptions {
-  doc: MarkupDoc;
-  getSelection(): string[];
-  activePageId(): string;
-  domTools?: Partial<DomTools>;
+  workspace: Workspace;
+  /** DOM tools of the editor showing fileId, while it is on screen. */
+  domTools?(fileId: string): Partial<DomTools> | undefined;
   url?: string;
   /** Injected for Node tests; the browser global otherwise. */
   WebSocketImpl?: typeof WebSocket;
@@ -18,8 +31,22 @@ export interface BridgeOptions {
 
 export interface BridgeConnection {
   status(): BridgeStatus;
+  /** Answers one request; exposed for tests. */
+  handle(msg: RequestMsg): Promise<ResponseMsg>;
   close(): void;
 }
+
+class BridgeFailure extends Error {
+  constructor(
+    readonly code: BridgeErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const isResourceTool = (method: string): method is ResourceToolName => (RESOURCE_TOOLS as readonly string[]).includes(method);
+const isDomTool = (method: string): method is DomToolName => (DOM_TOOLS as readonly string[]).includes(method);
 
 const WRITE_TOOLS = new Set(['create_artboard', 'write_html', 'update_styles', 'set_text_content', 'duplicate_nodes', 'move_nodes', 'delete_nodes', 'rename_nodes']);
 
@@ -45,7 +72,8 @@ function touchedArtboards(doc: MarkupDoc, method: string, params: Record<string,
 export function connectBridge(opts: BridgeOptions): BridgeConnection {
   const WS = opts.WebSocketImpl ?? WebSocket;
   const url = opts.url ?? `ws://127.0.0.1:${BRIDGE_PORT}`;
-  const clientId = `editor-${opts.doc.fileId}-${Math.random().toString(36).slice(2, 8)}`;
+  const { workspace } = opts;
+  const clientId = `editor-${Math.random().toString(36).slice(2, 10)}`;
   const agents = new Map<string, Actor>();
   let ws: WebSocket | null = null;
   let status: BridgeStatus = 'connecting';
@@ -66,25 +94,39 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
     return actor;
   };
 
+  /** The tab a request targets: its fileId, else the one in the foreground. */
+  const route = (fileId: string | undefined): { fileId: string; doc: MarkupDoc } => {
+    const target = fileId ?? workspace.activeFileId();
+    const doc = target ? workspace.doc(target) : undefined;
+    if (target && doc) return { fileId: target, doc };
+    if (fileId) throw new BridgeFailure('FILE_NOT_OPEN', `File ${fileId} is not open in Markup. Call open_file with its ID first; list_resources lists files.`);
+    throw new BridgeFailure('FILE_NOT_OPEN', 'No file is open in Markup. Call list_resources, then open_file.');
+  };
+
   const handle = async (msg: RequestMsg): Promise<ResponseMsg> => {
     try {
       const actor = actorFor(msg.agent);
       const params = (msg.params ?? {}) as Record<string, unknown>;
       let result: unknown;
-      if ((DOM_TOOLS as readonly string[]).includes(msg.method)) {
-        const tool = opts.domTools?.[msg.method as DomToolName];
-        if (!tool) throw new MarkupError('INVALID_ARGUMENT', `${msg.method} needs the editor canvas, which is not available here.`);
-        result = await tool(params);
+      if (isResourceTool(msg.method)) {
+        result = await runResourceTool(workspace, msg.method, params, { actor });
       } else {
-        result = runDocTool(opts.doc, actor, msg.method as DocToolName, params, { activePageId: opts.activePageId() });
-        if (WRITE_TOOLS.has(msg.method)) {
-          const artboards = touchedArtboards(opts.doc, msg.method, params, result);
-          if (artboards.length) opts.doc.setWorking(actor, artboards, true);
+        const { fileId, doc } = route(msg.fileId);
+        if (isDomTool(msg.method)) {
+          const tool = opts.domTools?.(fileId)?.[msg.method];
+          if (!tool) throw new MarkupError('INVALID_ARGUMENT', `${msg.method} needs the file on screen. Call open_file with ${fileId} to bring its tab to the foreground, then retry.`);
+          result = await tool(params);
+        } else {
+          result = runDocTool(doc, actor, msg.method as DocToolName, params, { activePageId: workspace.activePageId(fileId) });
+          if (WRITE_TOOLS.has(msg.method)) {
+            const artboards = touchedArtboards(doc, msg.method, params, result);
+            if (artboards.length) doc.setWorking(actor, artboards, true);
+          }
         }
       }
       return { type: 'response', id: msg.id, ok: true, result };
     } catch (err) {
-      const code = (err instanceof MarkupError ? err.code : 'INTERNAL') as BridgeErrorCode;
+      const code = (err instanceof MarkupError || err instanceof BridgeFailure ? err.code : 'INTERNAL') as BridgeErrorCode;
       return { type: 'response', id: msg.id, ok: false, error: { code, message: (err as Error).message } };
     }
   };
@@ -95,7 +137,8 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
     const socket = new WS(url);
     ws = socket;
     socket.onopen = () => {
-      const hello: BridgeMessage = { type: 'hello', role: 'editor', clientId, app: 'markup', files: [{ fileId: opts.doc.fileId, name: opts.doc.name, active: true }] };
+      lastFiles = JSON.stringify(workspace.tabs());
+      const hello: BridgeMessage = { type: 'hello', role: 'editor', clientId, app: 'markup', files: workspace.tabs() };
       socket.send(JSON.stringify(hello));
       setStatus('connected');
     };
@@ -120,12 +163,25 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
     };
   };
 
+  /** The hub routes by these, so it hears about every tab change. */
+  let lastFiles = '';
+  const sendFiles = () => {
+    const files: FileInfo[] = workspace.tabs();
+    const json = JSON.stringify(files);
+    if (json === lastFiles || !ws || ws.readyState !== ws.OPEN) return;
+    lastFiles = json;
+    ws.send(JSON.stringify({ type: 'files', files } satisfies BridgeMessage));
+  };
+  const offChange = workspace.on('change', sendFiles);
+
   connect();
 
   return {
     status: () => status,
+    handle,
     close() {
       closed = true;
+      offChange();
       if (retry) clearTimeout(retry);
       ws?.close();
       ws = null;

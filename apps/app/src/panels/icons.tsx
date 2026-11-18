@@ -89,4 +89,42 @@ export const icons = {
       <path d="M8 3v10M3 8h10" />
     </Svg>
   ),
+  home: (
+    <Svg>
+      <rect x="2" y="2" width="5" height="5" rx="1" />
+      <rect x="9" y="2" width="5" height="5" rx="1" />
+      <rect x="2" y="9" width="5" height="5" rx="1" />
+      <rect x="9" y="9" width="5" height="5" rx="1" />
+    </Svg>
+  ),
+  folder: (
+    <Svg>
+      <path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3h-4a1 1 0 0 0-1 1.5Z" />
+    </Svg>
+  ),
+  file: (
+    <Svg>
+      <path d="M4 1.5h5.5L12 4v10.5H4Z" />
+      <path d="M9.5 1.5V4H12" />
+    </Svg>
+  ),
+  archive: (
+    <Svg>
+      <rect x="1.5" y="2.5" width="13" height="3" rx="0.5" />
+      <path d="M2.5 5.5v7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-7M6.5 8.5h3" />
+    </Svg>
+  ),
+  search: (
+    <Svg>
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="m10.5 10.5 3.5 3.5" />
+    </Svg>
+  ),
+  more: (
+    <Svg>
+      <circle cx="3.5" cy="8" r="0.75" />
+      <circle cx="8" cy="8" r="0.75" />
+      <circle cx="12.5" cy="8" r="0.75" />
+    </Svg>
+  ),
 };

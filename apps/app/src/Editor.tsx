@@ -9,13 +9,13 @@ import { runCommand, type CommandContext } from './commands';
 import { isMacPlatform, resolveShortcut } from './keyboard';
 import { icons } from './panels/icons';
 import { RightPanel } from './panels/RightPanel';
-import { connectBridge, type BridgeStatus } from './bridge/client';
-import { createDomTools } from './bridge/domTools';
+import { captureThumbnail, createDomTools } from './bridge/domTools';
 import { LayersPanel } from './panels/LayersPanel';
 import { SelectionProvider, useSelection } from './selection';
 import { useDoc } from './store/DocProvider';
 import { usePages } from './store/hooks';
 import { sanitizeText } from './canvas/NodeView';
+import { useTabs, useWorkspace } from './workspace/WorkspaceProvider';
 
 export function Editor() {
   return (
@@ -32,7 +32,8 @@ function EditorShell() {
   const pages = usePages();
   const selection = useSelection();
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [activePageId, setActivePageId] = useState(() => pages.find((p) => p.type === 'page')!.id);
+  const { workspace, surfaces, bridgeStatus } = useWorkspace();
+  const [activePageId, setActivePageId] = useState(() => workspace.activePageId(doc.fileId));
   const page = pages.find((p) => p.type === 'page' && p.id === activePageId) ?? pages.find((p) => p.type === 'page');
   const rootId = page && page.type === 'page' ? page.rootId : '';
   const [viewport, setViewport] = useState<Viewport>({ x: 80, y: 80, zoom: 0.5 });
@@ -41,20 +42,21 @@ function EditorShell() {
   const [collapseSignal, setCollapseSignal] = useState(0);
   const [dragTick, setDragTick] = useState(0);
   const bumpDrag = useCallback(() => setDragTick((t) => t + 1), []);
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>('connecting');
-  const activePageRef = useRef(activePageId);
-  activePageRef.current = page?.id ?? activePageId;
+  const fileName = useTabs().find((t) => t.fileId === doc.fileId)?.name ?? doc.name;
+  const shownPageId = page?.id ?? activePageId;
+  // Agents read the page the tab shows; the workspace remembers it per tab.
+  useEffect(() => workspace.setActivePage(doc.fileId, shownPageId), [workspace, doc, shownPageId]);
+  const rootRef = useRef(rootId);
+  rootRef.current = rootId;
 
-  useEffect(() => {
-    const bridge = connectBridge({
-      doc,
-      getSelection: selection.get,
-      activePageId: () => activePageRef.current,
-      domTools: createDomTools({ doc, canvas: () => canvasRef.current, getSelection: selection.get }),
-      onStatus: setBridgeStatus,
-    });
-    return () => bridge.close();
-  }, [doc, selection.get]);
+  useEffect(
+    () =>
+      surfaces.register(doc.fileId, {
+        domTools: createDomTools({ doc, canvas: () => canvasRef.current, getSelection: selection.get }),
+        thumbnail: () => captureThumbnail(canvasRef.current, doc.getNode(rootRef.current)?.children[0]),
+      }),
+    [surfaces, doc, selection.get],
+  );
 
   const zoomToFit = useCallback(() => {
     const canvas = canvasRef.current;
@@ -130,7 +132,7 @@ function EditorShell() {
   return (
     <div className="editor">
       <header className="topbar">
-        <span className="file-name">{doc.name}</span>
+        <span className="file-name">{fileName}</span>
         <div className="toolbar" role="toolbar" aria-label="Tools">
           {TOOLS.map((t) => (
             <button key={t.id} className={`tool-button ${tool === t.id ? 'is-active' : ''}`} aria-pressed={tool === t.id} title={`${t.label} (${t.shortcut})`} onClick={() => setTool(t.id)}>

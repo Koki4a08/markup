@@ -4,6 +4,7 @@ import { tools } from '@markup/protocol';
 import type { DomTools } from './client';
 
 const MAX_SCREENSHOT_SIDE = 2048;
+const THUMBNAIL_WIDTH = 320;
 const COMPONENT: Record<string, string> = { frame: 'Frame', text: 'Text', image: 'Image', svg: 'SVG', root: 'Root' };
 
 const toCamel = (k: string) => k.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
@@ -87,4 +88,24 @@ export function createDomTools(opts: { doc: MarkupDoc; canvas: () => HTMLElement
       return { data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: 'image/png', width: Math.round(w * pixelRatio), height: Math.round(h * pixelRatio) };
     },
   };
+}
+
+/**
+ * PNG data URL of an artboard, 320px wide, for the dashboard. The element is cloned at once,
+ * so the capture still finishes when the editor unmounts right after (closing its tab).
+ */
+export function captureThumbnail(canvas: HTMLElement | null, artboardId: string | undefined): Promise<string | undefined> | undefined {
+  const el = artboardId ? canvas?.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(artboardId)}"]`) : null;
+  if (!el || !el.offsetWidth || !el.offsetHeight) return undefined;
+  const width = el.offsetWidth;
+  const height = el.offsetHeight;
+  const clone = el.cloneNode(true) as HTMLElement;
+  Object.assign(clone.style, { position: 'relative', left: '0', top: '0', margin: '0', translate: 'none' });
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-100000px;top:0;pointer-events:none;';
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  return toPng(clone, { width, height, pixelRatio: THUMBNAIL_WIDTH / width })
+    .then((url) => url as string | undefined)
+    .finally(() => host.remove());
 }

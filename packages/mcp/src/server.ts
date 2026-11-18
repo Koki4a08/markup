@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { tools, type ToolName } from '@markup/protocol';
+import { RESOURCE_TOOLS, tools, type ToolName } from '@markup/protocol';
 import type { ZodRawShape } from 'zod';
 import { guide } from './guide';
 import { BridgeError, type Hub } from './hub';
@@ -32,7 +32,9 @@ export function createServer(hub: Hub, clientId: string = randomUUID()): McpServ
     register(name, { description: def.description, inputSchema: def.input.shape }, async (args: Record<string, unknown>) => {
       if (name === 'get_guide') return { content: [{ type: 'text', text: guide(String(args.topic)) }] };
       try {
-        const fileId = typeof args.fileId === 'string' ? args.fileId : undefined;
+        // Resource tools act on the workspace; open_file's fileId names the file to open, not a route.
+        const routed = !(RESOURCE_TOOLS as readonly string[]).includes(name);
+        const fileId = routed && typeof args.fileId === 'string' ? args.fileId : undefined;
         const result = await hub.request({ fileId, method: name, params: args, agent: { clientId, name: agentName() } });
         return toResult(name, result);
       } catch (err) {

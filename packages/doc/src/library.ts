@@ -146,7 +146,8 @@ export class MarkupLibrary {
     });
   }
 
-  private all(): LibraryItem[] {
+  /** Every item, archived ones included, in no particular order. */
+  all(): LibraryItem[] {
     return [...this.items.values()].map(toItem);
   }
 
