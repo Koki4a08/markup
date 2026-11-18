@@ -121,8 +121,16 @@ export function isTyping(target: EventTarget | null): boolean {
   return !!el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
 }
 
-/** Focused buttons, links, tabs and menu items keep their own Enter, Space and Delete: canvas shortcuts must not hijack them. */
-export function isInteractive(target: EventTarget | null): boolean {
+const CONTROL = 'button, a[href], [role=button], [role=tab], [role=menuitem]';
+const OWN_KEYS = new Set(['Enter', ' ', 'Backspace', 'Delete']);
+
+/**
+ * True when a focused control should keep this key for itself. Inside comment UI every key stays local;
+ * on other buttons, tabs and links only the keys they act on do (Enter, Space, Backspace, Delete), so tool letters and modifier chords still work.
+ */
+export function controlOwnsKey(target: EventTarget | null, e: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean }): boolean {
   const el = target as HTMLElement | null;
-  return !!el && typeof el.closest === 'function' && !!el.closest('button, a[href], [role=button], [role=tab], [role=menuitem], .comment-popover, .comments-panel');
+  if (!el || typeof el.closest !== 'function') return false;
+  if (el.closest('.comment-popover, .comments-panel')) return true;
+  return !!el.closest(CONTROL) && !e.metaKey && !e.ctrlKey && !e.altKey && OWN_KEYS.has(e.key);
 }

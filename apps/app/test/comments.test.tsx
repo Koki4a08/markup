@@ -120,6 +120,20 @@ describe('comments', () => {
     expect(doc.threads()[0]!.status).toBe('resolved');
   });
 
+  it('a focused toolbar button still passes tool letters and modifier chords through', async () => {
+    await mountEditor();
+    const frame = screen.getByRole('button', { name: /^Frame/ });
+    fireEvent.click(frame);
+    frame.focus();
+    expect(frame.getAttribute('aria-pressed')).toBe('true');
+    // Enter and Delete stay with the button; V and Ctrl+Z reach the canvas.
+    expect(fireEvent.keyDown(frame, { key: 'Enter', code: 'Enter' })).toBe(true);
+    expect(fireEvent.keyDown(frame, { key: 'Delete', code: 'Delete' })).toBe(true);
+    expect(fireEvent.keyDown(frame, { key: 'z', code: 'KeyZ', ctrlKey: true })).toBe(false);
+    expect(fireEvent.keyDown(frame, { key: 'v', code: 'KeyV' })).toBe(false);
+    expect(screen.getByRole('button', { name: /^Move/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('Backspace on a focused panel button does not reach the canvas', async () => {
     await mountEditor();
     const tab = screen.getByRole('tab', { name: /^Comments/ });
