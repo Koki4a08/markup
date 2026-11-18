@@ -47,7 +47,7 @@ export const tools = {
     { fileId, familyNames: z.array(z.string()).describe('Font family names to look up, e.g. ["Inter", "Roboto"].') },
   ),
   export: tool(
-    "Export nodes as image or video files. Unless the user specifies, do not override the default export settings. Returns each export's file path.",
+    "Export nodes as image or video files. Unless the user specifies, do not override the default export settings. Returns each export's file path. Raster output is limited to 16384 px on its longest side and 16,777,216 px in area: a larger scale is lowered to the largest that fits and the export reports the ratio used as clampedScale. Hidden or zero-size nodes are skipped and listed in skipped ({ nodeId, reason }); a single requested node that is hidden is an error.",
     {
       fileId,
       pageId: z.string().optional().describe('The page ID to export from when nodes is "nodes-with-exports-only". Omit to use the page the user is viewing.'),

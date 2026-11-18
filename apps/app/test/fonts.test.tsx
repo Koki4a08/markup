@@ -65,6 +65,23 @@ describe('font info', () => {
     expect(hrefs).toHaveLength(2);
     expect(hrefs[0]).toContain('family=Inter');
   });
+
+  it('google stylesheet links are CORS-enabled so exports can read them', () => {
+    ensureFontsLoaded(['Inter']);
+    const link = document.head.querySelector<HTMLLinkElement>('link[href*="family=Inter"]')!;
+    expect(link.crossOrigin).toBe('anonymous');
+  });
+});
+
+describe('desktop content security policy', () => {
+  it('lets exports fetch Google fonts and remote images', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const conf = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf8')) as { app: { security: { csp: string } } };
+    const directives = Object.fromEntries(conf.app.security.csp.split(';').map((d) => d.trim().split(/\s+/)).map(([name, ...values]) => [name, values]));
+    const connect = directives['connect-src'] as string[];
+    for (const source of ["'self'", 'ws://127.0.0.1:29980', 'ipc:', 'http://ipc.localhost', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https:']) expect(connect).toContain(source);
+  });
 });
 
 describe('local font access', () => {

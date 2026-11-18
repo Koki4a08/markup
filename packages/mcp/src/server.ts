@@ -17,8 +17,9 @@ function toResult(method: ToolName, result: unknown): CallToolResult {
   }
   // The editor renders exports; this process writes them, so agents get paths on their own machine.
   if ((method === 'export' || method === 'export_combined_pdf') && result && typeof result === 'object' && 'files' in result) {
-    const exports = writeExports(result as { files: ExportedFile[] });
-    return { content: [{ type: 'text', text: JSON.stringify({ exports }) }] };
+    const { files, skipped } = result as { files: ExportedFile[]; skipped?: { nodeId: string; reason: string }[] };
+    const exports = writeExports({ files });
+    return { content: [{ type: 'text', text: JSON.stringify(Array.isArray(skipped) && skipped.length ? { exports, skipped } : { exports }) }] };
   }
   if (method === 'get_fill_image' && result && typeof result === 'object') {
     const { data, originalUrl, message } = result as { data?: string; originalUrl?: string; message?: string };

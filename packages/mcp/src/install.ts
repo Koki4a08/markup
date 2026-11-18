@@ -147,7 +147,7 @@ function installCodex(entry: ServerCommand, env: InstallEnv): InstallResult {
 
 function installClaude(entry: ServerCommand, env: InstallEnv): InstallResult {
   const claude = env.findExecutable('claude');
-  if (!claude) return { ok: false, message: `claude was not found on PATH. Install Claude Code, or run this yourself:\n${claudeAddLine(entry)}` };
+  if (!claude) return { ok: false, message: `claude was not found on PATH or in the usual install folders. Install Claude Code, or run this yourself:\n${claudeAddLine(entry)}` };
   const output = (r: RunResult) => [r.stdout.trim(), r.stderr.trim()].filter(Boolean).join('\n');
   // Replace any existing user-scope entry. `claude mcp get` would start the server to health-check it, so remove
   // unconditionally: it fails harmlessly when there is no entry.
@@ -185,18 +185,74 @@ export function install(target: InstallTarget, entry: ServerCommand, env: Instal
 
 /** Finds `name` on PATH, honouring PATHEXT on Windows. */
 export function findOnPath(name: string, platform: NodeJS.Platform = process.platform, pathEnv = process.env.PATH ?? process.env.Path ?? ''): string | null {
-  const exts = platform === 'win32' ? (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
-  for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
-    for (const ext of exts) {
-      const candidate = path.join(dir, name + ext.toLowerCase());
-      try {
-        if (fs.statSync(candidate).isFile()) return candidate;
-      } catch {
-        // not here
-      }
-    }
+  return searchDirs(name, pathEnv.split(platform === 'win32' ? ';' : ':'), platform, process.env, isFileOnDisk);
+}
+
+const isFileOnDisk = (file: string) => {
+  try {
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+};
+
+function searchDirs(name: string, dirs: string[], platform: NodeJS.Platform, vars: Record<string, string | undefined>, isFile: (file: string) => boolean): string | null {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  const exts = platform === 'win32' ? (vars.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean).map((e) => e.toLowerCase()) : [''];
+  for (const dir of dirs.filter(Boolean)) for (const ext of exts) {
+    const candidate = p.join(dir, name + ext);
+    if (isFile(candidate)) return candidate;
   }
   return null;
+}
+
+/** What findExecutable reads from the machine; injectable for tests. */
+export interface LookupEnv {
+  home: string;
+  platform: NodeJS.Platform;
+  pathEnv: string;
+  /** Windows %APPDATA%; defaults to <home>/AppData/Roaming. */
+  appData?: string;
+  /** Environment variables read: SHELL, NPM_CONFIG_PREFIX, PATHEXT. */
+  env: Record<string, string | undefined>;
+  isFile(file: string): boolean;
+  run(command: string, args: string[]): RunResult;
+}
+
+/**
+ * Where CLIs like claude are usually installed. Apps started from Finder or the Dock get
+ * PATH=/usr/bin:/bin:/usr/sbin:/sbin, so PATH alone misses most of them.
+ */
+function knownBinDirs(env: LookupEnv): string[] {
+  const { home } = env;
+  const prefix = env.env.NPM_CONFIG_PREFIX ?? env.env.npm_config_prefix;
+  if (env.platform === 'win32') {
+    const p = path.win32;
+    const appData = env.appData ?? p.join(home, 'AppData', 'Roaming');
+    return [p.join(appData, 'npm'), p.join(home, '.local', 'bin'), p.join(home, '.claude', 'local'), ...(prefix ? [prefix] : []), p.join(home, '.bun', 'bin'), p.join(home, '.volta', 'bin')];
+  }
+  const p = path.posix;
+  return [
+    p.join(home, '.local', 'bin'),
+    p.join(home, '.claude', 'local'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    ...(prefix ? [p.join(prefix, 'bin')] : []),
+    p.join(home, '.npm-global', 'bin'),
+    p.join(home, '.bun', 'bin'),
+    p.join(home, '.volta', 'bin'),
+  ];
+}
+
+/** Finds `name` on PATH, then in the usual install folders, then (macOS/Linux) by asking the user's login shell. */
+export function findExecutable(name: string, env: LookupEnv): string | null {
+  const found = searchDirs(name, env.pathEnv.split(env.platform === 'win32' ? ';' : ':'), env.platform, env.env, env.isFile) ?? searchDirs(name, knownBinDirs(env), env.platform, env.env, env.isFile);
+  if (found || env.platform === 'win32' || !/^[\w.-]+$/.test(name)) return found;
+  // nvm, asdf, fnm and custom prefixes are only known to the login shell's profile.
+  const shell = env.env.SHELL || (env.platform === 'darwin' ? '/bin/zsh' : '/bin/sh');
+  const r = env.run(shell, ['-lc', `command -v ${name}`]);
+  const line = r.status === 0 ? r.stdout.trim().split('\n').pop()?.trim() : undefined;
+  return line && line.startsWith('/') && env.isFile(line) ? line : null;
 }
 
 /** cmd.exe quoting for .cmd/.bat shims, which Node can only start through a shell. */
@@ -217,7 +273,8 @@ export function systemEnv(home: string): InstallEnv {
     platform: process.platform,
     appData: process.env.APPDATA,
     log: (line) => process.stdout.write(`${line}\n`),
-    findExecutable: (name) => findOnPath(name),
+    findExecutable: (name) =>
+      findExecutable(name, { home, platform: process.platform, pathEnv: process.env.PATH ?? process.env.Path ?? '', appData: process.env.APPDATA, env: process.env, isFile: isFileOnDisk, run: runCommand }),
     run: runCommand,
   };
 }

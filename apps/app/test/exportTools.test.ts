@@ -174,3 +174,65 @@ describe('export tools', () => {
     await expect(runExportTool(doc, 'get_fill_image', { nodeId: 'nope' }, { activePageId: pageId })).rejects.toMatchObject({ code: 'NODE_NOT_FOUND' });
   });
 });
+
+describe('export robustness', () => {
+  it('clamps a scale that would exceed the render size limit and reports clampedScale', async () => {
+    const { doc, pageId, card } = setup();
+    const res = (await runExportTool(doc, 'export', { nodes: { [card]: [{ format: 'png', scale: '200x' }] } }, { activePageId: pageId })) as Files & { files: { clampedScale?: number }[] };
+    const f = res.files[0]!;
+    expect(f.clampedScale).toBeGreaterThan(0);
+    expect(f.clampedScale).toBeLessThan(200);
+    expect(Math.max(f.width!, f.height!)).toBeLessThanOrEqual(16384);
+    expect(f.width! * f.height!).toBeLessThanOrEqual(16_777_216);
+    expect(captured[0]!.pixelRatio).toBe(f.clampedScale);
+    // An in-limit scale reports nothing.
+    const ok = (await runExportTool(doc, 'export', { nodes: { [card]: [] } }, { activePageId: pageId })) as Files & { files: { clampedScale?: number }[] };
+    expect(ok.files[0]!.clampedScale).toBeUndefined();
+  });
+
+  it('skips hidden and zero-size nodes instead of failing the whole export', async () => {
+    const { doc, pageId, card, icon } = setup();
+    const root = doc.rootOf(pageId);
+    const [flat] = doc.insertNodes(human, root, [{ type: 'frame', name: 'Flat', styles: { position: 'absolute', left: 400, top: 0, width: 0, height: 0 } }]);
+    doc.setExports(human, card, [{ format: 'png', scale: '1x' }]);
+    doc.setExports(human, icon, [{ format: 'png', scale: '1x' }]);
+    doc.setExports(human, flat!, [{ format: 'png', scale: '1x' }]);
+    doc.setFlags(human, [icon], { hidden: true });
+    const res = (await runExportTool(doc, 'export', { nodes: 'nodes-with-exports-only' }, { activePageId: pageId })) as Files & { skipped?: { nodeId: string; reason: string }[] };
+    expect(res.files.map((f) => f.nodeId)).toEqual([card]);
+    expect(res.skipped).toEqual([
+      { nodeId: icon, reason: expect.stringMatching(/hidden/i) },
+      { nodeId: flat, reason: expect.stringMatching(/size/i) },
+    ]);
+    // A single explicitly requested hidden node still errors clearly.
+    await expect(runExportTool(doc, 'export', { nodes: { [icon]: [] } }, { activePageId: pageId })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringMatching(/hidden/i) });
+  });
+
+  it('loads the fonts used by nodes on pages that are not on screen before rendering', async () => {
+    const { resetLoadedFonts } = await import('../src/fonts/fontLoader');
+    resetLoadedFonts();
+    document.head.querySelectorAll('link').forEach((l) => l.remove());
+    const load = vi.fn(async () => []);
+    const before = Object.getOwnPropertyDescriptor(document, 'fonts');
+    Object.defineProperty(document, 'fonts', { configurable: true, value: { load, ready: Promise.resolve() } });
+    try {
+      const { doc, pageId } = setup();
+      const other = doc.createPage(human, { name: 'Other' });
+      const [board] = doc.insertNodes(human, doc.rootOf(other), [{ type: 'frame', name: 'Board', styles: { position: 'absolute', left: 0, top: 0, width: 100, height: 100 } }]);
+      doc.insertNodes(human, board!, [{ type: 'text', name: 'Title', text: 'Hi', styles: { fontFamily: '"Inter", sans-serif', fontWeight: 700, fontStyle: 'italic' } }]);
+      const started = Date.now();
+      const done = runExportTool(doc, 'export', { nodes: { [board!]: [{ format: 'png', scale: '1x' }] } }, { activePageId: pageId });
+      const links = document.head.querySelectorAll('link[href*="family=Inter"]');
+      expect(links).toHaveLength(1);
+      // jsdom never loads stylesheets; the export waits for the link before loading faces.
+      expect(load).not.toHaveBeenCalled();
+      links[0]!.dispatchEvent(new Event('load'));
+      await done;
+      expect(Date.now() - started).toBeLessThan(4000);
+      expect(load).toHaveBeenCalledWith(expect.stringMatching(/^italic 700 .*"Inter"$/));
+    } finally {
+      if (before) Object.defineProperty(document, 'fonts', before);
+      else delete (document as unknown as Record<string, unknown>).fonts;
+    }
+  });
+});

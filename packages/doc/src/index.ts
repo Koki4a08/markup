@@ -12,4 +12,4 @@ export { ActorUndo, type LogEntry } from './history';
 export { runDocTool, type ToolContext } from './tools';
 export { MarkupLibrary, type LibraryItem } from './library';
 export { queryThreads, threadAuthors, type CommentThread, type CommentMessage, type CommentAttachment, type ThreadQuery, type ThreadSummary, type ThreadAuthor } from './comments';
-export { DEFAULT_EXPORT, EXPORT_FORMATS, SCALE_PATTERN, parseScale, type ExportFormat, type ExportSetting } from './exports';
+export { DEFAULT_EXPORT, EXPORT_FORMATS, MAX_EXPORT_AREA, MAX_EXPORT_SIDE, SCALE_PATTERN, clampPixelRatio, parseScale, type ExportFormat, type ExportSetting } from './exports';
