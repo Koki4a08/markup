@@ -3,8 +3,11 @@ import { Canvas, isTyping } from './canvas/Canvas';
 import { measureNode, unionRects, type Rect } from './canvas/geometry';
 import { useCanvasGestures } from './canvas/gestures';
 import { SelectionOverlay } from './canvas/SelectionOverlay';
+import { anchorWorld } from './comments/anchor';
+import { CommentLayer } from './comments/CommentLayer';
+import { DEFAULT_FILTER, markSeen, type CommentFilter, type Draft } from './comments/state';
 import { TOOLS, type Tool } from './canvas/tools';
-import { fitRect, type Viewport } from './canvas/viewport';
+import { fitRect, worldToScreen, type Viewport } from './canvas/viewport';
 import { runCommand, type CommandContext } from './commands';
 import { isMacPlatform, resolveShortcut } from './keyboard';
 import { icons } from './panels/icons';
@@ -25,7 +28,7 @@ export function Editor() {
   );
 }
 
-const CURSORS: Record<Tool, string> = { move: 'default', frame: 'crosshair', rect: 'crosshair', text: 'text', hand: 'grab' };
+const CURSORS: Record<Tool, string> = { move: 'default', frame: 'crosshair', rect: 'crosshair', text: 'text', hand: 'grab', comment: 'crosshair' };
 
 function EditorShell() {
   const { doc, actor, undo } = useDoc();
@@ -40,6 +43,10 @@ function EditorShell() {
   const [tool, setTool] = useState<Tool>('move');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [collapseSignal, setCollapseSignal] = useState(0);
+  const [commentFilter, setCommentFilter] = useState<CommentFilter>(DEFAULT_FILTER);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [revealId, setRevealId] = useState<string | null>(null);
   const [dragTick, setDragTick] = useState(0);
   const bumpDrag = useCallback(() => setDragTick((t) => t + 1), []);
   const fileName = useTabs().find((t) => t.fileId === doc.fileId)?.name ?? doc.name;
@@ -125,7 +132,52 @@ function EditorShell() {
     return () => window.removeEventListener('keydown', onKey);
   }, [ctx]);
 
-  const gestures = useCanvasGestures({ canvasRef, viewport, tool, setTool, rootId, bumpDrag, startTextEdit });
+  const placeComment = useCallback(
+    (at: { nodeId: string | null; x: number; y: number }) => {
+      setThreadId(null);
+      setDraft({ pageId: shownPageId, ...at });
+    },
+    [shownPageId],
+  );
+
+  const gestures = useCanvasGestures({ canvasRef, viewport, tool, setTool, rootId, bumpDrag, startTextEdit, placeComment });
+
+  /** Opens a thread from the panel: switches page when needed and pans so its pin is on screen. */
+  const openThread = useCallback(
+    (id: string) => {
+      const thread = doc.threads().find((t) => t.id === id);
+      if (!thread) return;
+      markSeen(doc.fileId, thread);
+      setDraft(null);
+      setThreadId(id);
+      setRevealId(id);
+      if (thread.pageId !== shownPageId) {
+        setActivePageId(thread.pageId);
+        selection.set([]);
+      }
+    },
+    [doc, shownPageId, selection],
+  );
+
+  useEffect(() => {
+    if (!revealId) return;
+    const canvas = canvasRef.current;
+    const thread = doc.threads().find((t) => t.id === revealId);
+    if (!canvas || !thread || thread.pageId !== shownPageId) return;
+    setRevealId(null);
+    const world = anchorWorld(canvas, thread, viewport);
+    const box = canvas.getBoundingClientRect();
+    if (!world || box.width === 0) return;
+    const at = worldToScreen(viewport, world);
+    if (at.x < 24 || at.y < 24 || at.x > box.width - 360 || at.y > box.height - 24) setViewport({ ...viewport, x: box.width / 2 - world.x * viewport.zoom - 160, y: box.height / 2 - world.y * viewport.zoom });
+  }, [revealId, doc, shownPageId, viewport]);
+
+  const createComment = (d: Draft, body: string) => {
+    const id = doc.createThread(actor, { ...d, body });
+    setDraft(null);
+    setThreadId(id);
+    setTool('move');
+  };
 
   if (!rootId || !page || page.type !== 'page') return null;
 
@@ -153,6 +205,8 @@ function EditorShell() {
           onPage={(id) => {
             setActivePageId(id);
             selection.set([]);
+            setThreadId(null);
+            setDraft(null);
           }}
           renamingId={renamingId}
           onRenameDone={() => setRenamingId(null)}
@@ -165,9 +219,28 @@ function EditorShell() {
           onViewport={setViewport}
           cursor={CURSORS[tool]}
           onPointerDown={gestures.onPointerDown}
-          overlay={<SelectionOverlay canvasRef={canvasRef} ids={selection.ids} viewport={viewport} dragTick={dragTick} onHandleDown={gestures.onHandleDown} />}
+          overlay={
+            <>
+              <SelectionOverlay canvasRef={canvasRef} ids={selection.ids} viewport={viewport} dragTick={dragTick} onHandleDown={gestures.onHandleDown} />
+              <CommentLayer
+                canvasRef={canvasRef}
+                viewport={viewport}
+                pageId={page.id}
+                filter={commentFilter}
+                selectedId={threadId}
+                draft={draft}
+                dragTick={dragTick}
+                onSelect={(id) => {
+                  setDraft(null);
+                  setThreadId(id);
+                }}
+                onCancelDraft={() => setDraft(null)}
+                onCreate={createComment}
+              />
+            </>
+          }
         />
-        <RightPanel />
+        <RightPanel comments={{ activePageId: page.id, filter: commentFilter, onFilter: setCommentFilter, selectedId: threadId, onSelect: openThread }} />
       </main>
     </div>
   );

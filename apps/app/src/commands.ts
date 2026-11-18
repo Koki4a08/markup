@@ -53,6 +53,8 @@ export function runCommand(command: Command, ctx: CommandContext): void {
       return ctx.setTool('rect');
     case 'tool:text':
       return ctx.setTool('text');
+    case 'tool:comment':
+      return ctx.setTool('comment');
     case 'tool:hand':
       return ctx.setTool('hand');
     case 'undo':

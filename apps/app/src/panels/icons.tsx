@@ -127,4 +127,14 @@ export const icons = {
       <circle cx="12.5" cy="8" r="0.75" />
     </Svg>
   ),
+  trash: (
+    <Svg>
+      <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.5 7v4M9.5 7v4" />
+    </Svg>
+  ),
+  comment: (
+    <Svg>
+      <path d="M3 3h10a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H7.5L4.5 14v-2.5H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    </Svg>
+  ),
 };
