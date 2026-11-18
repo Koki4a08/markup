@@ -17,6 +17,8 @@ export interface PasteTarget {
 }
 
 export const SNAPSHOT_MARKER = '<!--markup:snapshot v1-->';
+/** The extension also marks each snapshot root div, since clipboard sanitisers can drop the comment. */
+export const SNAPSHOT_ATTR = 'data-markup-snapshot';
 export const HEIC_MESSAGE = 'HEIC images are not supported in this browser.';
 const ARTBOARD_GAP = 80;
 const MAX_IMAGE_SIDE = 2000;
@@ -74,7 +76,7 @@ purifier.addHook('uponSanitizeAttribute', (_node, data) => {
 export function cleanHtml(html: string): string {
   const safe = purifier.sanitize(html, {
     FORBID_TAGS: ['style', 'meta', 'script', 'iframe', 'object', 'embed', 'link', 'o:p'],
-    ADD_ATTR: ['layer-name', 'data-source'],
+    ADD_ATTR: ['layer-name', 'data-source', SNAPSHOT_ATTR],
     ALLOW_DATA_ATTR: true,
   });
   const body = new DOMParser().parseFromString(`<body>${safe}</body>`, 'text/html').body;
@@ -142,6 +144,12 @@ async function imageSpec(file: File): Promise<NodeSpec> {
   return { type: 'image', name: file.name.replace(/\.[^.]+$/, '') || 'Image', src, styles: { width: `${width}px`, height: `${height}px` } };
 }
 
+/** Whether a top-level div of the cleaned markup carries the snapshot attribute. */
+function hasSnapshotRoot(cleaned: string): boolean {
+  const body = new DOMParser().parseFromString(`<body>${cleaned}</body>`, 'text/html').body;
+  return Array.from(body.children).some((el) => el.localName === 'div' && el.hasAttribute(SNAPSHOT_ATTR));
+}
+
 /** Everything the clipboard holds, as node specs, plus whether it is a snapshot payload. */
 async function toSpecs(data: PasteData): Promise<{ specs: NodeSpec[]; snapshot: boolean }> {
   const images = (data.files ?? []).filter((f) => IMAGE_TYPES.test(f.type) || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(f.name));
@@ -149,8 +157,9 @@ async function toSpecs(data: PasteData): Promise<{ specs: NodeSpec[]; snapshot: 
 
   const html = data.html?.trim();
   if (html) {
-    const snapshot = html.includes(SNAPSHOT_MARKER);
-    const { specs } = parseHtml(cleanHtml(html));
+    const cleaned = cleanHtml(html);
+    const snapshot = html.includes(SNAPSHOT_MARKER) || hasSnapshotRoot(cleaned);
+    const { specs } = parseHtml(cleaned);
     if (specs.length) return { specs, snapshot };
   }
 
