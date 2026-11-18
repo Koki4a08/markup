@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, isInteractive, isTyping } from './canvas/Canvas';
+import { Canvas, controlOwnsKey, isTyping } from './canvas/Canvas';
 import { measureNode, unionRects, type Rect } from './canvas/geometry';
 import { useCanvasGestures } from './canvas/gestures';
 import { SelectionOverlay } from './canvas/SelectionOverlay';
@@ -122,7 +122,7 @@ function EditorShell() {
   useEffect(() => {
     const mac = isMacPlatform();
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target) || isInteractive(e.target)) return;
+      if (isTyping(e.target) || controlOwnsKey(e.target, e)) return;
       const command = resolveShortcut(e, mac);
       if (!command) return;
       e.preventDefault();
