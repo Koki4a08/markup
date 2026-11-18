@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { BRIDGE_PORT, DOM_TOOLS, EDITOR_TOOLS, PHASE1_TOOLS, RESOURCE_TOOLS, tools } from '../src/index';
+import { BRIDGE_PORT, DOM_TOOLS, EDITOR_TOOLS, FONT_TOOLS, PHASE1_TOOLS, RESOURCE_TOOLS, tools } from '../src/index';
 
 describe('tool schemas', () => {
   it('every tool has description and object schema', () => {
@@ -12,7 +12,7 @@ describe('tool schemas', () => {
 
   it('covers the phase-1 tool set exactly', () => {
     expect(Object.keys(tools).sort()).toEqual([...PHASE1_TOOLS].sort());
-    expect(PHASE1_TOOLS).toHaveLength(37);
+    expect(PHASE1_TOOLS).toHaveLength(38);
   });
 
   it('write_html requires html, targetNodeId, mode', () => {
@@ -32,8 +32,8 @@ describe('tool schemas', () => {
     expect(BRIDGE_PORT).toBe(29980);
   });
 
-  it('the editor answers dom and resource tools, and resource tools take no fileId', () => {
-    expect([...EDITOR_TOOLS].sort()).toEqual([...DOM_TOOLS, ...RESOURCE_TOOLS].sort());
+  it('the editor answers dom, resource and font tools, and resource tools take no fileId', () => {
+    expect([...EDITOR_TOOLS].sort()).toEqual([...DOM_TOOLS, ...RESOURCE_TOOLS, ...FONT_TOOLS].sort());
     expect(RESOURCE_TOOLS).toHaveLength(8);
     for (const t of RESOURCE_TOOLS.filter((t) => t !== 'open_file')) expect(Object.keys(tools[t].input.shape), t).not.toContain('fileId');
   });
