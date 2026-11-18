@@ -5,13 +5,13 @@ import { PHASE1_TOOLS } from '@markup/protocol';
 import { BridgeError, type Hub } from '../src/hub';
 import { createServer } from '../src/server';
 
-function fakeHub(answer: (method: string, params: unknown) => unknown): Hub & { calls: { method: string; agent: { name: string } }[] } {
-  const calls: { method: string; agent: { name: string } }[] = [];
+function fakeHub(answer: (method: string, params: unknown) => unknown): Hub & { calls: { method: string; fileId?: string; agent: { name: string } }[] } {
+  const calls: { method: string; fileId?: string; agent: { name: string } }[] = [];
   return {
     role: 'host',
     calls,
     async request(msg) {
-      calls.push({ method: msg.method, agent: msg.agent });
+      calls.push({ method: msg.method, fileId: msg.fileId, agent: msg.agent });
       return answer(msg.method, msg.params);
     },
     async close() {},
@@ -40,6 +40,14 @@ describe('mcp server', () => {
     const res = await client.callTool({ name: 'get_basic_info', arguments: {} });
     expect(res.content).toEqual([{ type: 'text', text: JSON.stringify({ nodeCount: 3 }) }]);
     expect(hub.calls[0]).toMatchObject({ method: 'get_basic_info', agent: { name: 'claude-code' } });
+  });
+
+  it('open_file is not routed by its fileId argument, doc tools are', async () => {
+    const hub = fakeHub(() => ({}));
+    const client = await connect(hub);
+    await client.callTool({ name: 'open_file', arguments: { fileId: 'f2' } });
+    await client.callTool({ name: 'get_basic_info', arguments: { fileId: 'f2' } });
+    expect(hub.calls.map((c) => c.fileId)).toEqual([undefined, 'f2']);
   });
 
   it('string results are returned as plain text', async () => {

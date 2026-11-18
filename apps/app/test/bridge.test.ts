@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { MarkupDoc } from '@markup/doc';
 import { startHub, type Hub } from '@markup/mcp';
 import { connectBridge, type BridgeConnection } from '../src/bridge/client';
+import { memoryWorkspace } from './memoryWorkspace';
 
 const agent = { clientId: 'c1', name: 'Claude Code' };
 let port = 39700 + Math.floor(Math.random() * 200);
@@ -24,20 +24,19 @@ async function setup() {
   const p = port++;
   const hub: Hub = await startHub(p);
   cleanups.push(() => hub.close());
-  const doc = new MarkupDoc({ name: 'Landing' });
-  const page = doc.pages()[0]!;
+  const ws = memoryWorkspace();
+  const landing = ws.addFile('Landing');
+  const doc = await ws.workspace.open(landing);
   const bridge: BridgeConnection = connectBridge({
-    doc,
+    workspace: ws.workspace,
     url: `ws://127.0.0.1:${p}`,
     WebSocketImpl: WebSocket as unknown as typeof globalThis.WebSocket,
-    activePageId: () => page.id,
-    getSelection: () => [],
     retryMs: 50,
   });
   cleanups.push(() => bridge.close());
   await waitFor(() => bridge.status() === 'connected');
   await new Promise((r) => setTimeout(r, 20));
-  return { hub, doc, bridge, port: p };
+  return { hub, doc, bridge, port: p, ...ws };
 }
 
 describe('bridge client', () => {
@@ -65,5 +64,59 @@ describe('bridge client', () => {
     await waitFor(() => bridge.status() === 'connected');
     await new Promise((r) => setTimeout(r, 20));
     await expect(again.request({ method: 'get_basic_info', params: {}, agent })).resolves.toMatchObject({ fileName: 'Landing' });
+  });
+
+  it('routes by fileId across tabs', async () => {
+    const { hub, workspace, addFile, doc } = await setup();
+    const other = addFile('Pricing');
+    await hub.request({ method: 'open_file', params: { fileId: other }, agent });
+    await new Promise((r) => setTimeout(r, 30));
+    await expect(hub.request({ fileId: doc.fileId, method: 'get_basic_info', params: { fileId: doc.fileId }, agent })).resolves.toMatchObject({ fileName: 'Landing' });
+    await expect(hub.request({ fileId: other, method: 'get_basic_info', params: { fileId: other }, agent })).resolves.toMatchObject({ fileName: 'Pricing' });
+    // No fileId: the foreground tab, which open_file brought forward.
+    await expect(hub.request({ method: 'get_basic_info', params: {}, agent })).resolves.toMatchObject({ fileName: 'Pricing' });
+    await hub.request({ fileId: doc.fileId, method: 'create_artboard', params: { fileId: doc.fileId, name: 'A', styles: { width: '10px', height: '10px' } }, agent });
+    expect(doc.nodeCount()).toBeGreaterThan(workspace.doc(other)!.nodeCount());
+  });
+
+  it('closed file gives FILE_NOT_OPEN mentioning open_file', async () => {
+    const { hub, workspace, doc } = await setup();
+    workspace.close(doc.fileId);
+    await new Promise((r) => setTimeout(r, 30));
+    await expect(hub.request({ fileId: doc.fileId, method: 'get_basic_info', params: {}, agent })).rejects.toMatchObject({ code: 'FILE_NOT_OPEN', message: expect.stringContaining('open_file') });
+    // Also when the hub still believes the file is open (its files list lags): the editor answers.
+    await expect(hub.request({ method: 'get_basic_info', params: {}, agent })).rejects.toMatchObject({ code: 'FILE_NOT_OPEN', message: expect.stringContaining('open_file') });
+  });
+
+  it('editor answers FILE_NOT_OPEN itself for a file it no longer has', async () => {
+    const { workspace, doc, bridge } = await setup();
+    workspace.close(doc.fileId);
+    const res = await bridge.handle({ type: 'request', id: 'r1', fileId: doc.fileId, method: 'get_basic_info', params: {}, agent });
+    expect(res).toMatchObject({ ok: false, error: { code: 'FILE_NOT_OPEN', message: expect.stringContaining('open_file') } });
+  });
+
+  it('files message follows tab changes', async () => {
+    const p = port++;
+    const seen: unknown[] = [];
+    const { WebSocketServer } = await import('ws');
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: p });
+    cleanups.push(() => new Promise<void>((r) => wss.close(() => r())));
+    wss.on('connection', (sock) => sock.on('message', (raw) => seen.push(JSON.parse(String(raw)))));
+    const { workspace, addFile } = memoryWorkspace();
+    const a = addFile('A');
+    const b = addFile('B');
+    await workspace.open(a);
+    const bridge = connectBridge({ workspace, url: `ws://127.0.0.1:${p}`, WebSocketImpl: WebSocket as unknown as typeof globalThis.WebSocket, retryMs: 50 });
+    cleanups.push(() => bridge.close());
+    await waitFor(() => seen.length === 1);
+    expect(seen[0]).toMatchObject({ type: 'hello', role: 'editor', files: [{ fileId: a, name: 'A', active: true }] });
+    await workspace.open(b);
+    await waitFor(() => seen.length === 2);
+    expect(seen[1]).toEqual({ type: 'files', files: [{ fileId: a, name: 'A', active: false }, { fileId: b, name: 'B', active: true }] });
+    workspace.rename(b, 'B2');
+    await waitFor(() => seen.length === 3);
+    workspace.close(a);
+    await waitFor(() => seen.length === 4);
+    expect(seen[3]).toEqual({ type: 'files', files: [{ fileId: b, name: 'B2', active: true }] });
   });
 });

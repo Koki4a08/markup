@@ -3,9 +3,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { MarkupDoc } from '@markup/doc';
 import { createServer, startHub } from '@markup/mcp';
 import { connectBridge } from '../src/bridge/client';
+import { memoryWorkspace } from './memoryWorkspace';
 
 const cleanups: (() => unknown)[] = [];
 afterEach(async () => {
@@ -16,9 +16,9 @@ it('agent draws through markup mcp and the log attributes it', async () => {
   const port = 39950 + Math.floor(Math.random() * 40);
   const hub = await startHub(port);
   cleanups.push(() => hub.close());
-  const doc = new MarkupDoc({ name: 'Landing' });
-  const page = doc.pages()[0]!;
-  const bridge = connectBridge({ doc, url: `ws://127.0.0.1:${port}`, WebSocketImpl: WebSocket as unknown as typeof globalThis.WebSocket, activePageId: () => page.id, getSelection: () => [] });
+  const { workspace, addFile } = memoryWorkspace();
+  const doc = await workspace.open(addFile('Landing'));
+  const bridge = connectBridge({ workspace, url: `ws://127.0.0.1:${port}`, WebSocketImpl: WebSocket as unknown as typeof globalThis.WebSocket });
   cleanups.push(() => bridge.close());
   while (bridge.status() !== 'connected') await new Promise((r) => setTimeout(r, 10));
   await new Promise((r) => setTimeout(r, 20));

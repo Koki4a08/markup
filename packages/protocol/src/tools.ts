@@ -138,6 +138,61 @@ export const tools = {
       removeDividerIds: z.array(z.string()).optional().describe('IDs of dividers to remove; they must not appear in order.'),
     },
   ),
+  list_resources: tool(
+    'Lists files and folders. Each item has type "file" or "folder" and parentId, omitted for a top-level folder. Open files are listed first. `open` means the file is a desktop tab. `active` means that tab is in the foreground. Both apply only to files. `draft` means the item is in the user’s drafts; every local Markup file is a draft. Then files and folders recently updated. Pass parentId to list only what is inside one folder. Pass a higher limit until truncated is absent before treating the list as the whole tree.',
+    {
+      includeArchived: z.boolean().optional().describe('Optional. Also list archived files and folders, marked archived. Use to find IDs for unarchive_resources.'),
+      limit: z.number().int().min(1).max(200).optional().describe('Maximum number of files and folders to return. Defaults to 50. Sorted by updatedAt, most recent first.'),
+      parentId: z.string().optional().describe('Optional folder ID. Only list the files and folders directly inside this folder.'),
+    },
+  ),
+  open_file: tool(
+    'Opens a Markup file by its ID or URL as a desktop tab in the foreground. Optional pageId is applied only on the initial open; if the file is already open the page will not switch. Returns a get_basic_info response.',
+    {
+      fileId: z.string().min(1).describe('The Markup file ID to open. Accepts a bare ID, a /file/<id> route path, or the file URL (markup://file/<id>).'),
+      pageId: z
+        .string()
+        .optional()
+        .describe('Optional page ID to open. Only applied when the file is not already open; if the file is already open the current page is left unchanged so the user is not pulled away from what they are looking at. A page ID in a /file/<id>/<pageId> URL passed as fileId is also accepted.'),
+    },
+  ),
+  create_file: tool(
+    'Create a new Markup file and returns the new file’s ID, name, parentId, and URL. Pass parentId to create it inside a folder; otherwise it is created at the top level. To start working in the new file, call open_file with the returned ID.',
+    {
+      cloneFileId: z.string().optional().describe('Optional file ID to clone from. If provided, the new file is a copy of this one.'),
+      name: z.string().optional().describe('Optional display name for the new file.'),
+      parentId: z.string().optional().describe('Optional ID of the folder to create the new file in. Defaults to the top level. Use list_resources to find folder IDs.'),
+    },
+  ),
+  create_folder: tool(
+    'Create a new folder in the file browser and returns its ID, name, parentId, and URL. Pass parentId to nest it inside another folder; otherwise it is created at the top level. The stored name is trimmed and capped at 500 characters.',
+    {
+      name: z.string().optional().describe('Optional display name for the new folder. Defaults to "Untitled project".'),
+      parentId: z.string().optional().describe('Optional ID of the folder to create the new folder in. Defaults to the top level. Use list_resources to find folder IDs.'),
+    },
+  ),
+  rename_resource: tool(
+    'Rename a file or folder. Sets the display name shown in the file browser and on its tab. Pass the file or folder ID. The stored name is trimmed and capped at 500 characters. An empty name leaves the current name unchanged. Returns the stored name and whether the resource is a file or a folder.',
+    {
+      resourceId: z.string().describe('The ID of the file or folder to rename.'),
+      name: z.string().describe('The new display name for the file or folder.'),
+    },
+  ),
+  move_resources: tool(
+    'Move files and folders into another folder. A folder moves with everything inside it, so pass a folder or items inside it, not both. Every ID is checked first: if any of them cannot be moved, nothing is moved. Returns the moved items. Items already in the folder are listed separately and left as they are.',
+    {
+      resourceIds: z.array(z.string()).min(1).describe('The IDs of the files and folders to move. Use list_resources to find IDs.'),
+      parentId: z.string().describe('The ID of the folder to move them into. Use list_resources to find folder IDs.'),
+    },
+  ),
+  archive_resources: tool(
+    'Archive files and folders. Archiving a folder also archives everything inside it. Archived items move to the Archive view in the file browser and are only returned by list_resources with includeArchived. Use unarchive_resources to restore them. Every ID is checked first: if any of them cannot be archived, nothing is archived. Returns the archived items.',
+    { resourceIds: z.array(z.string()).min(1).describe('The IDs of the files and folders to archive. Use list_resources to find IDs.') },
+  ),
+  unarchive_resources: tool(
+    'Unarchive files and folders. Unarchiving a folder also unarchives everything inside it. An item whose folder is still archived is moved to the top level, unless that folder is also being unarchived. Every ID is checked first: if any of them cannot be unarchived, nothing is unarchived. Returns the unarchived items with the parentId each one ended up in.',
+    { resourceIds: z.array(z.string()).min(1).describe('The IDs of the archived files and folders to unarchive. Use list_resources with includeArchived to find IDs.') },
+  ),
 };
 
 export type ToolName = keyof typeof tools;
@@ -148,4 +203,21 @@ export const PHASE1_TOOLS = Object.keys(tools) as ToolName[];
 /** Tools only the editor can answer, because they need the rendered DOM or local UI state. */
 export const DOM_TOOLS = ['get_selection', 'get_computed_styles', 'get_screenshot'] as const satisfies readonly ToolName[];
 export type DomToolName = (typeof DOM_TOOLS)[number];
-export type DocToolName = Exclude<ToolName, DomToolName | 'get_guide'>;
+
+/** Tools about the file library and tabs. They never take a fileId: they act on the workspace. */
+export const RESOURCE_TOOLS = [
+  'list_resources',
+  'open_file',
+  'create_file',
+  'create_folder',
+  'rename_resource',
+  'move_resources',
+  'archive_resources',
+  'unarchive_resources',
+] as const satisfies readonly ToolName[];
+export type ResourceToolName = (typeof RESOURCE_TOOLS)[number];
+
+/** Tools the editor answers itself; everything else runs against the routed document with runDocTool. */
+export const EDITOR_TOOLS = [...DOM_TOOLS, ...RESOURCE_TOOLS] as const satisfies readonly ToolName[];
+export type EditorToolName = (typeof EDITOR_TOOLS)[number];
+export type DocToolName = Exclude<ToolName, EditorToolName | 'get_guide'>;
