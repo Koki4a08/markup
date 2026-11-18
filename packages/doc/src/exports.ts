@@ -29,6 +29,26 @@ export function parseScale(scale: string, size: { width: number; height: number 
   return value / side;
 }
 
+/** Largest raster export: WebKit's canvas limits (longest side and total pixels). */
+export const MAX_EXPORT_SIDE = 16384;
+export const MAX_EXPORT_AREA = 16_777_216;
+
+/**
+ * Lowers a pixel ratio so a node of this CSS size renders within MAX_EXPORT_SIDE and MAX_EXPORT_AREA.
+ * clampedScale is set (to the ratio used) only when the requested ratio was too large.
+ */
+export function clampPixelRatio(pixelRatio: number, size: { width: number; height: number }): { pixelRatio: number; clampedScale?: number } {
+  const { width, height } = size;
+  if (!(width > 0 && height > 0)) return { pixelRatio };
+  const fits = (r: number) => Math.round(width * r) <= MAX_EXPORT_SIDE && Math.round(height * r) <= MAX_EXPORT_SIDE && Math.round(width * r) * Math.round(height * r) <= MAX_EXPORT_AREA;
+  if (fits(pixelRatio)) return { pixelRatio };
+  let r = Math.min(MAX_EXPORT_SIDE / Math.max(width, height), Math.sqrt(MAX_EXPORT_AREA / (width * height)), pixelRatio);
+  // Rounding can push a side or the area one pixel over; step down until it fits.
+  while (r > 0 && !fits(r)) r *= 0.9999;
+  r = Math.floor(r * 10000) / 10000;
+  return { pixelRatio: r, clampedScale: r };
+}
+
 const QUALITIES = ['low', 'medium', 'high'];
 const RESAMPLING = ['detailed', 'basic'];
 

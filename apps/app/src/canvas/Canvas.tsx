@@ -4,7 +4,7 @@ import { NodeView } from './NodeView';
 import { worldToScreen, zoomAt, type Viewport } from './viewport';
 import { useChildren, useDeep, useNode, useWorking } from '../store/hooks';
 import { useDoc } from '../store/DocProvider';
-import { ensureFontsLoaded } from '../fonts/fontLoader';
+import { ensureFontsLoaded, fontFacesUsed } from '../fonts/fontLoader';
 import { knownLocalFonts, listLocalFonts } from '../fonts/localFonts';
 
 interface CanvasProps {
@@ -109,23 +109,7 @@ export function Canvas({ rootId, viewport, onViewport, overlay, onPointerDown, c
 
 /** First family of each font stack used by the page's nodes, quotes stripped. */
 function usedFamilies(doc: ReturnType<typeof useDoc>['doc'], rootId: string): string[] {
-  const families = new Set<string>();
-  const stack = [rootId];
-  const seen = new Set<string>();
-  while (stack.length) {
-    const id = stack.pop()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const node = doc.getNode(id);
-    if (!node) continue;
-    const family = node.styles.fontFamily;
-    if (typeof family === 'string') {
-      const first = family.split(',')[0]!.trim().replace(/^["']|["']$/g, '');
-      if (first) families.add(first);
-    }
-    stack.push(...node.children);
-  }
-  return [...families].sort();
+  return [...new Set(fontFacesUsed(doc, [rootId]).map((f) => f.family))].sort();
 }
 
 /** Loads the Google Fonts the active page uses right away, skipping families already known to be local. */
@@ -134,7 +118,7 @@ function useFontLoading(rootId: string) {
   const families = useDeep(doc.nodes, () => usedFamilies(doc, rootId));
   useEffect(() => {
     if (!families.length) return;
-    ensureFontsLoaded(families, knownLocalFonts());
+    void ensureFontsLoaded(families, knownLocalFonts());
     void listLocalFonts(); // warms the list when access was already granted; never prompts or blocks
   }, [families]);
 }

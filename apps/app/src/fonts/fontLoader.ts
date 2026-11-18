@@ -1,4 +1,5 @@
 import googleFontsJson from './google-fonts.json';
+import type { MarkupDoc } from '@markup/doc';
 import type { LocalFont } from './localFonts';
 
 export interface FontAxis {
@@ -121,21 +122,68 @@ export function css2Url(font: GoogleFont): string {
   return `https://fonts.googleapis.com/css2?family=${name}${spec ? `:${spec}` : ''}&display=swap`;
 }
 
-const requested = new Set<string>();
+/** Each family's stylesheet link settling (load or error); a family is requested once per session. */
+const requested = new Map<string, Promise<void>>();
 
-/** Adds one stylesheet link per Google family not installed locally; each family is requested once per session. */
-export function ensureFontsLoaded(families: string[], local: LocalFont[] = []): void {
-  if (typeof document === 'undefined') return;
+/**
+ * Adds one stylesheet link per Google family not installed locally; each family is requested once per session.
+ * Resolves when the stylesheets of these families have loaded or failed (it may never, so callers cap the wait).
+ */
+export function ensureFontsLoaded(families: string[], local: LocalFont[] = []): Promise<void> {
+  if (typeof document === 'undefined') return Promise.resolve();
   const installed = new Set(local.map((f) => f.family.toLowerCase()));
+  const waits: Promise<void>[] = [];
   for (const family of families) {
     const font = googleFont(family);
-    if (!font || installed.has(font.family.toLowerCase()) || requested.has(font.family)) continue;
-    requested.add(font.family);
+    if (!font || installed.has(font.family.toLowerCase())) continue;
+    const known = requested.get(font.family);
+    if (known) {
+      waits.push(known);
+      continue;
+    }
     const link = document.createElement('link');
     link.rel = 'stylesheet';
+    // CORS mode, so html-to-image can read the rules when it inlines fonts into an export.
+    link.crossOrigin = 'anonymous';
+    const settled = new Promise<void>((resolve) => {
+      link.addEventListener('load', () => resolve(), { once: true });
+      link.addEventListener('error', () => resolve(), { once: true });
+    });
+    requested.set(font.family, settled);
+    waits.push(settled);
     link.href = css2Url(font);
     document.head.appendChild(link);
   }
+  return Promise.all(waits).then(() => undefined);
+}
+
+export interface UsedFont {
+  family: string;
+  weight: string;
+  style: string;
+}
+
+const firstFamily = (stack: string) => stack.split(',')[0]!.trim().replace(/^["']|["']$/g, '');
+
+/** Every family / weight / style used under the given nodes (inherited down the tree), deduped. */
+export function fontFacesUsed(doc: MarkupDoc, rootIds: string[]): UsedFont[] {
+  const out = new Map<string, UsedFont>();
+  const seen = new Set<string>();
+  const stack: { id: string; family?: string; weight: string; style: string }[] = rootIds.map((id) => ({ id, weight: '400', style: 'normal' }));
+  while (stack.length) {
+    const { id, ...inherited } = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const node = doc.getNode(id);
+    if (!node) continue;
+    const { fontFamily, fontWeight, fontStyle } = node.styles;
+    const family = typeof fontFamily === 'string' && firstFamily(fontFamily) ? firstFamily(fontFamily) : inherited.family;
+    const weight = typeof fontWeight === 'number' || typeof fontWeight === 'string' ? String(fontWeight) : inherited.weight;
+    const style = typeof fontStyle === 'string' ? fontStyle : inherited.style;
+    if (family && (fontFamily !== undefined || fontWeight !== undefined || fontStyle !== undefined)) out.set(`${family}|${weight}|${style}`, { family, weight, style });
+    for (const child of node.children) stack.push({ id: child, family, weight, style });
+  }
+  return [...out.values()];
 }
 
 /** Test hook: forget which families were requested. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { DEFAULT_EXPORT, MarkupDoc, parseScale, type Actor } from '../src/index';
+import { DEFAULT_EXPORT, MAX_EXPORT_AREA, MAX_EXPORT_SIDE, MarkupDoc, clampPixelRatio, parseScale, type Actor } from '../src/index';
 
 const ana: Actor = { id: 'local-user', kind: 'human', name: 'Ana' };
 
@@ -49,5 +49,23 @@ describe('export settings', () => {
     expect(doc.exportsOf(newId)).toEqual(doc.exportsOf(id));
     doc.setExports(ana, id, []);
     expect(doc.exportsOf(id)).toEqual([]);
+  });
+});
+
+describe('export size limit', () => {
+  it('clampPixelRatio keeps the output under 16384 px a side and 16,777,216 px in area', () => {
+    expect(MAX_EXPORT_SIDE).toBe(16384);
+    expect(MAX_EXPORT_AREA).toBe(16_777_216);
+    // Within the limit: unchanged.
+    expect(clampPixelRatio(2, { width: 1440, height: 900 })).toEqual({ pixelRatio: 2 });
+    // 20x of 1440x900 is ~518M px: clamped to the area limit.
+    const big = clampPixelRatio(20, { width: 1440, height: 900 });
+    expect(big.clampedScale).toBe(big.pixelRatio);
+    expect(big.pixelRatio).toBeLessThan(20);
+    expect(Math.round(1440 * big.pixelRatio) * Math.round(900 * big.pixelRatio)).toBeLessThanOrEqual(MAX_EXPORT_AREA);
+    // A long thin node hits the side limit first.
+    const thin = clampPixelRatio(10, { width: 4000, height: 10 });
+    expect(Math.round(4000 * thin.pixelRatio)).toBeLessThanOrEqual(MAX_EXPORT_SIDE);
+    expect(thin.clampedScale).toBeCloseTo(16384 / 4000, 3);
   });
 });

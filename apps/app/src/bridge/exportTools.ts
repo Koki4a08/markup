@@ -15,6 +15,20 @@ export interface ExportedFile {
   data: string;
   width: number;
   height: number;
+  /** The pixel ratio used when the requested scale was over the render size limit. */
+  clampedScale?: number;
+}
+
+/** A node left out of an export, with why. */
+export interface SkippedNode {
+  nodeId: string;
+  reason: string;
+}
+
+export interface ExportResult {
+  files: ExportedFile[];
+  /** Hidden or zero-size nodes that were not exported; absent when none were skipped. */
+  skipped?: SkippedNode[];
 }
 
 function parse<T>(name: ExportToolName, params: unknown): T {
@@ -58,9 +72,35 @@ function worldPosition(doc: MarkupDoc, nodeId: string): { x: number; y: number }
   return { x, y };
 }
 
+/** Why a node cannot be rendered before mounting it: it or an ancestor is hidden. */
+function hiddenReason(doc: MarkupDoc, nodeId: string): string | null {
+  for (let node = doc.getNode(nodeId); node && node.type !== 'root'; node = node.parentId ? doc.getNode(node.parentId) : undefined)
+    if (node.hidden) return node.id === nodeId ? 'The node is hidden.' : `Its parent ${node.id} is hidden.`;
+  return null;
+}
+
+const NO_SIZE = 'The node has no size (zero width or height).';
+const hasSize = (el: HTMLElement) => el.offsetWidth > 0 && el.offsetHeight > 0;
+
+/**
+ * Splits off hidden nodes. When strict (one node explicitly requested) a hidden node is an error;
+ * otherwise it is skipped and reported so one hidden layer does not fail the rest.
+ */
+function dropHidden(doc: MarkupDoc, ids: string[], strict: boolean, skipped: SkippedNode[]): string[] {
+  return ids.filter((nodeId) => {
+    const reason = hiddenReason(doc, nodeId);
+    if (!reason) return true;
+    if (strict) throw new MarkupError('INVALID_ARGUMENT', `Cannot export node ${nodeId}: ${reason} Show it first.`);
+    skipped.push({ nodeId, reason });
+    return false;
+  });
+}
+
+const withSkipped = (files: ExportedFile[], skipped: SkippedNode[]): ExportResult => (skipped.length ? { files, skipped } : { files });
+
 const QUALITY_RANK = { low: 0, medium: 1, high: 2 } as const;
 
-async function exportNodes(doc: MarkupDoc, params: Record<string, unknown>, activePageId: string): Promise<{ files: ExportedFile[] }> {
+async function exportNodes(doc: MarkupDoc, params: Record<string, unknown>, activePageId: string): Promise<ExportResult> {
   const p = parse<{ pageId?: string; type?: 'image' | 'video'; nodes: 'nodes-with-exports-only' | Record<string, ExportSetting[]> }>('export', params);
   if (p.type === 'video') throw unsupportedVideo();
   const jobs: { nodeId: string; setting: ExportSetting }[] = [];
@@ -79,28 +119,51 @@ async function exportNodes(doc: MarkupDoc, params: Record<string, unknown>, acti
   }
   if (!jobs.length) throw new MarkupError('INVALID_ARGUMENT', 'Nothing to export: nodes is empty.');
   if (jobs.some((j) => VIDEO.has(j.setting.format))) throw unsupportedVideo();
-  return withRenderedNodes(doc, [...new Set(jobs.map((j) => j.nodeId))], async (element) => {
+  const skipped: SkippedNode[] = [];
+  const strict = p.nodes !== 'nodes-with-exports-only' && Object.keys(p.nodes).length === 1;
+  const ids = dropHidden(doc, [...new Set(jobs.map((j) => j.nodeId))], strict, skipped);
+  if (!ids.length) return withSkipped([], skipped);
+  return withRenderedNodes(doc, ids, async (element) => {
     const files: ExportedFile[] = [];
+    const sizeless = new Set<string>();
     for (const { nodeId, setting } of jobs) {
-      const r = await renderExport(element(nodeId), setting);
-      files.push({ nodeId, name: doc.requireNode(nodeId).name, format: setting.format, scale: setting.scale, mimeType: r.mimeType, data: toBase64(r.bytes), width: r.width, height: r.height });
+      if (!ids.includes(nodeId) || sizeless.has(nodeId)) continue;
+      const el = element(nodeId);
+      if (!strict && !hasSize(el)) {
+        sizeless.add(nodeId);
+        skipped.push({ nodeId, reason: NO_SIZE });
+        continue;
+      }
+      const r = await renderExport(el, setting);
+      const file: ExportedFile = { nodeId, name: doc.requireNode(nodeId).name, format: setting.format, scale: setting.scale, mimeType: r.mimeType, data: toBase64(r.bytes), width: r.width, height: r.height };
+      if (r.clampedScale !== undefined) file.clampedScale = r.clampedScale;
+      files.push(file);
     }
-    return { files };
+    return withSkipped(files, skipped);
   });
 }
 
-async function exportCombinedPdf(doc: MarkupDoc, params: Record<string, unknown>): Promise<{ files: ExportedFile[] }> {
+async function exportCombinedPdf(doc: MarkupDoc, params: Record<string, unknown>): Promise<ExportResult> {
   const { nodeIds } = parse<{ nodeIds: string[] }>('export_combined_pdf', params);
-  const ids = [...new Set(nodeIds)];
-  for (const id of ids) doc.requireNode(id);
+  const unique = [...new Set(nodeIds)];
+  for (const id of unique) doc.requireNode(id);
+  const skipped: SkippedNode[] = [];
+  const ids = dropHidden(doc, unique, unique.length === 1, skipped);
+  if (!ids.length) throw new MarkupError('INVALID_ARGUMENT', 'Nothing to export: every node is hidden.');
   const pos = new Map(ids.map((id) => [id, worldPosition(doc, id)]));
   ids.sort((a, b) => pos.get(a)!.y - pos.get(b)!.y || pos.get(a)!.x - pos.get(b)!.x);
   const pdfSettings = ids.flatMap((id) => doc.exportsOf(id)).filter((s) => s.format === 'pdf');
   const quality = pdfSettings.length ? pdfSettings.map((s) => s.pdfQuality ?? 'high').reduce((a, b) => (QUALITY_RANK[b] > QUALITY_RANK[a] ? b : a)) : 'high';
   const resampling = !pdfSettings.length || pdfSettings.some((s) => (s.pdfResampling ?? 'detailed') === 'detailed') ? 'detailed' : 'basic';
   return withRenderedNodes(doc, ids, async (element) => {
-    const r = await renderPdf(ids.map(element), { quality, resampling });
-    return { files: [{ nodeId: ids[0]!, name: doc.name, format: 'pdf', scale: '1x', mimeType: r.mimeType, data: toBase64(r.bytes), width: r.width, height: r.height }] };
+    const pages = ids.filter((nodeId) => {
+      if (ids.length === 1 || hasSize(element(nodeId))) return true;
+      skipped.push({ nodeId, reason: NO_SIZE });
+      return false;
+    });
+    if (!pages.length) throw new MarkupError('INVALID_ARGUMENT', 'Nothing to export: no node has a size.');
+    const r = await renderPdf(pages.map(element), { quality, resampling });
+    return withSkipped([{ nodeId: pages[0]!, name: doc.name, format: 'pdf', scale: '1x', mimeType: r.mimeType, data: toBase64(r.bytes), width: r.width, height: r.height }], skipped);
   });
 }
 

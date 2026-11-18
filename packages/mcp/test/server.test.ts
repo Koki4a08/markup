@@ -84,6 +84,23 @@ describe('mcp server', () => {
     }
   });
 
+  it('export replies carry skipped nodes and clamped scales', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'markup-export-'));
+    process.env.MARKUP_EXPORT_DIR = dir;
+    try {
+      const data = Buffer.from('png-bytes').toString('base64');
+      const skipped = [{ nodeId: 'h', reason: 'The node is hidden.' }];
+      const client = await connect(fakeHub(() => ({ files: [{ nodeId: 'n', name: 'Hero', format: 'png', scale: '200x', clampedScale: 81.92, mimeType: 'image/png', data }], skipped })));
+      const res = await client.callTool({ name: 'export', arguments: { nodes: 'nodes-with-exports-only' } });
+      const parsed = JSON.parse((res.content as { text: string }[])[0]!.text) as { exports: { clampedScale?: number }[]; skipped?: unknown };
+      expect(parsed.exports[0]!.clampedScale).toBe(81.92);
+      expect(parsed.skipped).toEqual(skipped);
+    } finally {
+      delete process.env.MARKUP_EXPORT_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('fill images are returned as an image block with the original url', async () => {
     const client = await connect(fakeHub(() => ({ data: '/9j/4AAQ', mimeType: 'image/jpeg', originalUrl: 'https://x/y.png' })));
     const res = await client.callTool({ name: 'get_fill_image', arguments: { nodeId: 'n' } });

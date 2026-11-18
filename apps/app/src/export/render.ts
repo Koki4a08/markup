@@ -2,9 +2,11 @@ import { toCanvas } from 'html-to-image';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { MarkupError, parseScale, type Actor, type ExportSetting, type MarkupDoc } from '@markup/doc';
+import { MarkupError, clampPixelRatio, parseScale, type Actor, type ExportSetting, type MarkupDoc } from '@markup/doc';
 import { NodeView } from '../canvas/NodeView';
 import { DocProvider } from '../store/DocProvider';
+import { ensureFontsLoaded, fontFacesUsed, type UsedFont } from '../fonts/fontLoader';
+import { knownLocalFonts } from '../fonts/localFonts';
 
 export interface Rendered {
   bytes: Uint8Array;
@@ -13,6 +15,8 @@ export interface Rendered {
   /** Pixel size of raster output; the node size in px for svg and pdf. */
   width: number;
   height: number;
+  /** The pixel ratio used when the requested scale was over the render size limit (MAX_EXPORT_SIDE / MAX_EXPORT_AREA). */
+  clampedScale?: number;
 }
 
 type PdfQuality = NonNullable<ExportSetting['pdfQuality']>;
@@ -30,10 +34,11 @@ const EXPORT_ACTOR: Actor = { id: 'export', kind: 'human', name: 'Export' };
 
 const sizeOf = (el: HTMLElement) => ({ width: el.offsetWidth, height: el.offsetHeight });
 
+/** Renders el to a canvas; the ratio is lowered when the output would exceed the browser's canvas size limit. */
 async function rasterize(el: HTMLElement, pixelRatio: number, backgroundColor?: string): Promise<HTMLCanvasElement> {
   const { width, height } = sizeOf(el);
   if (!width || !height) throw new MarkupError('INVALID_ARGUMENT', `Node ${el.getAttribute('data-node-id')} has no size to export.`);
-  return toCanvas(el, { width, height, pixelRatio, cacheBust: true, backgroundColor, style: NEUTRAL });
+  return toCanvas(el, { width, height, pixelRatio: clampPixelRatio(pixelRatio, { width, height }).pixelRatio, cacheBust: true, backgroundColor, style: NEUTRAL });
 }
 
 function toBytes(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Uint8Array> {
@@ -120,9 +125,11 @@ export async function renderExport(el: HTMLElement, setting: ExportSetting): Pro
     if (!svg) throw new MarkupError('INVALID_ARGUMENT', 'SVG export is only available for SVG layers.');
     return { bytes: svgMarkup(svg, el, pixelRatio), mimeType: 'image/svg+xml', ext: 'svg', ...size };
   }
-  if (format === 'pdf') return renderPdf([el], { pixelRatio: () => pixelRatio, quality: setting.pdfQuality ?? 'high', resampling: setting.pdfResampling ?? 'detailed' });
+  const { clampedScale } = clampPixelRatio(pixelRatio, size);
+  const clamped = clampedScale === undefined ? {} : { clampedScale };
+  if (format === 'pdf') return { ...(await renderPdf([el], { pixelRatio: () => pixelRatio, quality: setting.pdfQuality ?? 'high', resampling: setting.pdfResampling ?? 'detailed' })), ...clamped };
   const canvas = await rasterize(el, pixelRatio, RASTER[format]?.opaque ? '#ffffff' : undefined);
-  const dims = { width: canvas.width, height: canvas.height };
+  const dims = { width: canvas.width, height: canvas.height, ...clamped };
   if (format === 'avif') return { bytes: await encodeAvif(canvas), mimeType: 'image/avif', ext: 'avif', ...dims };
   const raster = RASTER[format];
   if (!raster) throw new MarkupError('INVALID_ARGUMENT', `Unknown export format "${format}".`);
@@ -143,8 +150,15 @@ const nextFrame = () =>
       });
   });
 
-/** Waits for the mounted nodes' images and fonts, at most 5 s so an image that never loads cannot hang an export. */
-export async function settled(host: HTMLElement): Promise<void> {
+/** A CSS font shorthand for document.fonts.load. */
+const fontQuery = (f: UsedFont) => `${f.style} ${f.weight} 16px "${f.family.replace(/["\\]/g, '')}"`;
+
+/**
+ * Waits for the mounted nodes' images and fonts, at most 5 s so an image or font that never loads cannot
+ * hang an export. stylesheets settles when the fonts' stylesheets have loaded; each face in fonts is then
+ * loaded explicitly, since document.fonts.ready only covers fonts the page already asked for.
+ */
+export async function settled(host: HTMLElement, fonts: UsedFont[] = [], stylesheets: Promise<void> = Promise.resolve()): Promise<void> {
   await nextFrame();
   const images = [...host.querySelectorAll('img')].filter((img) => img.getAttribute('src') && !img.complete);
   const loaded = images.map(
@@ -154,11 +168,15 @@ export async function settled(host: HTMLElement): Promise<void> {
         img.addEventListener('error', () => r(), { once: true });
       }),
   );
-  const fonts = document.fonts ? document.fonts.ready.then(() => undefined) : Promise.resolve();
+  const faces = stylesheets.then(async () => {
+    if (!document.fonts) return;
+    await Promise.all(fonts.map((f) => document.fonts.load(fontQuery(f)).catch(() => undefined)));
+    await document.fonts.ready;
+  });
   let timer: ReturnType<typeof setTimeout> | undefined;
   const cap = new Promise<void>((r) => (timer = setTimeout(r, 5000)));
   try {
-    await Promise.race([Promise.all([...loaded, fonts]), cap]);
+    await Promise.race([Promise.all([...loaded, faces]), cap]);
   } finally {
     clearTimeout(timer);
   }
@@ -181,6 +199,9 @@ function artboardOf(doc: MarkupDoc, nodeId: string): string {
 export async function withRenderedNodes<T>(doc: MarkupDoc, nodeIds: string[], fn: (element: (id: string) => HTMLElement) => Promise<T>): Promise<T> {
   for (const id of nodeIds) if (doc.requireNode(id).type === 'root') throw new MarkupError('IS_ROOT', 'A page root cannot be exported; export its artboards.');
   const artboards = [...new Set(nodeIds.map((id) => artboardOf(doc, id)))];
+  // The canvas only loads fonts for the page on screen; nodes on other pages or tabs need theirs too.
+  const fonts = fontFacesUsed(doc, artboards);
+  const stylesheets = ensureFontsLoaded([...new Set(fonts.map((f) => f.family))], knownLocalFonts());
   const host = document.createElement('div');
   host.setAttribute('data-markup-export-host', '');
   host.setAttribute('aria-hidden', 'true');
@@ -190,7 +211,7 @@ export async function withRenderedNodes<T>(doc: MarkupDoc, nodeIds: string[], fn
   try {
     const children = artboards.map((id) => createElement(NodeView, { key: id, id }));
     flushSync(() => root.render(createElement(DocProvider, { doc, actor: EXPORT_ACTOR, children })));
-    await settled(host);
+    await settled(host, fonts, stylesheets);
     return await fn((id) => {
       const el = host.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`);
       if (!el) throw new MarkupError('NODE_NOT_FOUND', `Node ${id} could not be rendered.`);

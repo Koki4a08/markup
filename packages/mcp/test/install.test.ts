@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { configPath, defaultServerCommand, install, upsertCodexTable, type InstallEnv, type RunResult } from '../src/install';
+import { configPath, defaultServerCommand, findExecutable, install, upsertCodexTable, type InstallEnv, type RunResult } from '../src/install';
 import { AGENTS, snippets } from '../src/snippets';
 
 const entry = { command: 'C:\\Program Files\\Markup\\markup.exe', args: ['mcp'] };
@@ -159,5 +159,50 @@ describe('markup install', () => {
     expect(defaultServerCommand('C:\\Program Files\\Markup\\markup.exe', '/x/dist/cli.js')).toEqual({ command: 'C:\\Program Files\\Markup\\markup.exe', args: ['mcp'] });
     expect(defaultServerCommand('/app/markup-x86_64-unknown-linux-gnu', '/x/dist/cli.js')).toEqual({ command: '/app/markup-x86_64-unknown-linux-gnu', args: ['mcp'] });
     expect(defaultServerCommand('/usr/bin/node', 'dist/cli.js')).toEqual({ command: 'node', args: [path.resolve('dist/cli.js'), 'mcp'] });
+  });
+});
+
+describe('finding claude outside PATH', () => {
+  const none: RunResult = { status: 1, stdout: '', stderr: '' };
+  const lookup = (over: Partial<Parameters<typeof findExecutable>[1]>) => ({
+    home: '/Users/kg',
+    platform: 'darwin' as NodeJS.Platform,
+    pathEnv: '/usr/bin:/bin:/usr/sbin:/sbin',
+    env: {},
+    isFile: () => false,
+    run: () => none,
+    ...over,
+  });
+
+  it('checks the usual install folders when an app started from Finder has a bare PATH', () => {
+    const shell: string[][] = [];
+    for (const dir of ['/Users/kg/.local/bin', '/Users/kg/.claude/local', '/opt/homebrew/bin', '/usr/local/bin']) {
+      const found = findExecutable('claude', lookup({ isFile: (p) => p === `${dir}/claude`, run: (c, a) => (shell.push([c, ...a]), none) }));
+      expect(found).toBe(`${dir}/claude`);
+    }
+    expect(shell).toEqual([]);
+    // The npm global prefix.
+    expect(findExecutable('claude', lookup({ env: { NPM_CONFIG_PREFIX: '/Users/kg/.npm-global' }, isFile: (p) => p === '/Users/kg/.npm-global/bin/claude' }))).toBe('/Users/kg/.npm-global/bin/claude');
+  });
+
+  it('asks the login shell as a last resort', () => {
+    const calls: string[][] = [];
+    const nvm = '/Users/kg/.nvm/versions/node/v24.1.0/bin/claude';
+    const found = findExecutable('claude', lookup({ env: { SHELL: '/bin/zsh' }, isFile: (p) => p === nvm, run: (c, a) => (calls.push([c, ...a]), { status: 0, stdout: `${nvm}\n`, stderr: '' }) }));
+    expect(found).toBe(nvm);
+    expect(calls).toEqual([['/bin/zsh', '-lc', 'command -v claude']]);
+    expect(findExecutable('claude', lookup({}))).toBeNull();
+  });
+
+  it('checks %APPDATA%/npm and %USERPROFILE%/.local/bin on Windows', () => {
+    const w = (...parts: string[]) => path.win32.join('C:\\Users\\kg', ...parts);
+    const win = { home: w(), platform: 'win32' as NodeJS.Platform, pathEnv: 'C:\\Windows\\System32', env: { PATHEXT: '.EXE;.CMD' }, run: () => none };
+    const npmShim = w('AppData', 'Roaming', 'npm', 'claude.cmd');
+    expect(findExecutable('claude', { ...win, appData: w('AppData', 'Roaming'), isFile: (p) => p === npmShim })).toBe(npmShim);
+    const local = w('.local', 'bin', 'claude.exe');
+    expect(findExecutable('claude', { ...win, isFile: (p) => p === local })).toBe(local);
+    // PATH still wins.
+    const onPath = path.win32.join('C:\\tools', 'claude.exe');
+    expect(findExecutable('claude', { ...win, pathEnv: 'C:\\tools', isFile: (p) => p === onPath || p === local })).toBe(onPath);
   });
 });
