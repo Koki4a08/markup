@@ -2,17 +2,20 @@ import { MarkupError, runDocTool, type Actor, type MarkupDoc } from '@markup/doc
 import {
   BRIDGE_PORT,
   DOM_TOOLS,
+  FONT_TOOLS,
   RESOURCE_TOOLS,
   type BridgeErrorCode,
   type BridgeMessage,
   type DocToolName,
   type DomToolName,
   type FileInfo,
+  type FontToolName,
   type RequestMsg,
   type ResourceToolName,
   type ResponseMsg,
 } from '@markup/protocol';
 import type { Workspace } from '../workspace/Workspace';
+import { runFontTool } from './fontTools';
 import { runResourceTool } from './resourceTools';
 
 export type DomTools = Record<DomToolName, (params: unknown) => unknown | Promise<unknown>>;
@@ -48,6 +51,7 @@ class BridgeFailure extends Error {
 }
 
 const isResourceTool = (method: string): method is ResourceToolName => (RESOURCE_TOOLS as readonly string[]).includes(method);
+const isFontTool = (method: string): method is FontToolName => (FONT_TOOLS as readonly string[]).includes(method);
 const isDomTool = (method: string): method is DomToolName => (DOM_TOOLS as readonly string[]).includes(method);
 
 const WRITE_TOOLS = new Set(['create_artboard', 'write_html', 'update_styles', 'set_text_content', 'duplicate_nodes', 'move_nodes', 'delete_nodes', 'rename_nodes']);
@@ -112,6 +116,8 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
       let result: unknown;
       if (isResourceTool(msg.method)) {
         result = await runResourceTool(workspace, msg.method, params, { actor });
+      } else if (isFontTool(msg.method)) {
+        result = await runFontTool(params);
       } else {
         const { fileId, doc } = route(msg.fileId);
         if (isDomTool(msg.method)) {

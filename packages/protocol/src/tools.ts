@@ -42,6 +42,10 @@ export const tools = {
     nodeId: z.string(),
     scale: z.number().min(0.25).max(4).optional(),
   }),
+  get_font_family_info: tool(
+    "Get information about whether a font family is available in a file and all weights and styles in the family. This tool looks up fonts on the user's machine and Google Fonts. Each family lists groups of styles that share the same italicization, width, and variable axes.",
+    { fileId, familyNames: z.array(z.string()).describe('Font family names to look up, e.g. ["Inter", "Roboto"].') },
+  ),
   find_nodes: tool(
     'Find nodes by computed style and/or text. filters are {styleName, styleValue} matchers combined with AND; both accept "*" wildcards, colors match by equivalence, and a literal color also finds token-bound usages. textValue matches text content case-insensitively, anchored, with "*" wildcards.',
     {
@@ -248,7 +252,11 @@ export const RESOURCE_TOOLS = [
 ] as const satisfies readonly ToolName[];
 export type ResourceToolName = (typeof RESOURCE_TOOLS)[number];
 
+/** Tools about fonts. The editor answers them from the machine's fonts and the bundled Google Fonts catalog. */
+export const FONT_TOOLS = ['get_font_family_info'] as const satisfies readonly ToolName[];
+export type FontToolName = (typeof FONT_TOOLS)[number];
+
 /** Tools the editor answers itself; everything else runs against the routed document with runDocTool. */
-export const EDITOR_TOOLS = [...DOM_TOOLS, ...RESOURCE_TOOLS] as const satisfies readonly ToolName[];
+export const EDITOR_TOOLS = [...DOM_TOOLS, ...RESOURCE_TOOLS, ...FONT_TOOLS] as const satisfies readonly ToolName[];
 export type EditorToolName = (typeof EDITOR_TOOLS)[number];
 export type DocToolName = Exclude<ToolName, EditorToolName | 'get_guide'>;

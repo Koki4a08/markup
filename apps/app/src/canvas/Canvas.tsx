@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { parsePxValue } from './geometry';
 import { NodeView } from './NodeView';
 import { worldToScreen, zoomAt, type Viewport } from './viewport';
-import { useChildren, useNode, useWorking } from '../store/hooks';
+import { useChildren, useDeep, useNode, useWorking } from '../store/hooks';
+import { useDoc } from '../store/DocProvider';
+import { ensureFontsLoaded } from '../fonts/fontLoader';
+import { listLocalFonts } from '../fonts/localFonts';
 
 interface CanvasProps {
   rootId: string;
@@ -20,6 +23,7 @@ export function Canvas({ rootId, viewport, onViewport, overlay, onPointerDown, c
   const ownRef = useRef<HTMLDivElement>(null);
   const ref = containerRef ?? ownRef;
   const artboards = useChildren(rootId);
+  useFontLoading(rootId);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const panning = useRef<{ x: number; y: number } | null>(null);
 
@@ -101,6 +105,41 @@ export function Canvas({ rootId, viewport, onViewport, overlay, onPointerDown, c
       {overlay}
     </div>
   );
+}
+
+/** First family of each font stack used by the page's nodes, quotes stripped. */
+function usedFamilies(doc: ReturnType<typeof useDoc>['doc'], rootId: string): string[] {
+  const families = new Set<string>();
+  const stack = [rootId];
+  const seen = new Set<string>();
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const node = doc.getNode(id);
+    if (!node) continue;
+    const family = node.styles.fontFamily;
+    if (typeof family === 'string') {
+      const first = family.split(',')[0]!.trim().replace(/^["']|["']$/g, '');
+      if (first) families.add(first);
+    }
+    stack.push(...node.children);
+  }
+  return [...families].sort();
+}
+
+/** Loads the Google Fonts the active page uses, unless the machine already has them. */
+function useFontLoading(rootId: string) {
+  const { doc } = useDoc();
+  const families = useDeep(doc.nodes, () => usedFamilies(doc, rootId));
+  useEffect(() => {
+    if (!families.length) return;
+    let live = true;
+    void listLocalFonts().then((local) => live && ensureFontsLoaded(families, local));
+    return () => {
+      live = false;
+    };
+  }, [families]);
 }
 
 function ArtboardLabel({ id, viewport }: { id: string; viewport: Viewport }) {
