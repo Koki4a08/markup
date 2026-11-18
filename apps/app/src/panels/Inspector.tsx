@@ -5,6 +5,7 @@ import { ColorField, common, MIXED, Section, SelectField, TextField, type FieldV
 import { useDoc } from '../store/DocProvider';
 import { useNodes } from '../store/hooks';
 import { useSelection } from '../selection';
+import { ExportSection } from '../export/ExportSection';
 import { localFontsGranted, requestLocalFonts } from '../fonts/localFonts';
 
 /** Style keys owned by a dedicated section; everything else lands in Other styles. */
@@ -160,6 +161,8 @@ export function Inspector() {
         ))}
         <AddStyle onAdd={(k, v) => set({ [k]: v })} />
       </Section>
+
+      <ExportSection nodes={nodes} />
     </div>
   );
 }

@@ -89,6 +89,11 @@ export const icons = {
       <path d="M8 3v10M3 8h10" />
     </Svg>
   ),
+  download: (
+    <Svg>
+      <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11" />
+    </Svg>
+  ),
   home: (
     <Svg>
       <rect x="2" y="2" width="5" height="5" rx="1" />

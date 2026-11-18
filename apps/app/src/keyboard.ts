@@ -18,7 +18,11 @@ export type Command =
   | 'zoomTo100'
   | 'wrapInFrame'
   | 'wrapInFlex'
-  | 'collapseLayers';
+  | 'collapseLayers'
+  | 'exportSelection'
+  | 'copyPng'
+  | 'copyReact'
+  | 'copyTailwind';
 
 export interface KeyLike {
   key: string;
@@ -62,6 +66,10 @@ const BINDINGS: Binding[] = [
   { code: 'KeyF', shift: true, command: 'wrapInFrame' },
   { code: 'KeyA', shift: true, command: 'wrapInFlex' },
   { code: 'KeyL', alt: true, command: 'collapseLayers' },
+  { code: 'KeyE', mod: true, shift: true, command: 'exportSelection' },
+  { code: 'KeyC', mod: true, shift: true, command: 'copyPng' },
+  { code: 'KeyR', alt: true, command: 'copyReact' },
+  { code: 'KeyT', alt: true, command: 'copyTailwind' },
 ];
 
 export function resolveShortcut(e: KeyLike, isMac: boolean): Command | null {
