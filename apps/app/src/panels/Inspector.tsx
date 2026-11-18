@@ -58,6 +58,8 @@ export function Inspector() {
   const parentOf = (n: MarkupNode) => parents.find((p) => p.id === n.parentId);
   const value = (key: string): FieldValue => common(nodes.map((n) => n.styles[key]));
   const set = (styles: Record<string, StyleValue | null>) => doc.updateStyles(actor, [{ nodeIds: ids, styles }]);
+  // Free-form edits: a pasted exact snapshot carries margins, grid and inline display that must stay editable.
+  const setAny = (styles: Record<string, StyleValue | null>) => doc.updateStyles(actor, [{ nodeIds: ids, styles }], undefined, { dialect: 'any' });
   const allText = nodes.every((n) => n.type === 'text');
   const anyFrame = nodes.some((n) => n.type === 'frame');
   const isFlex = value('display') === 'flex';
@@ -153,13 +155,13 @@ export function Inspector() {
       <Section title="Other styles">
         {other.map((key) => (
           <div className="field-pair" key={key}>
-            <TextField label={key} value={value(key)} onCommit={(v) => set({ [key]: v || null })} />
-            <button className="icon-button" aria-label={`Remove ${key}`} onClick={() => set({ [key]: null })}>
+            <TextField label={key} value={value(key)} onCommit={(v) => setAny({ [key]: v || null })} />
+            <button className="icon-button" aria-label={`Remove ${key}`} onClick={() => setAny({ [key]: null })}>
               {icons.close}
             </button>
           </div>
         ))}
-        <AddStyle onAdd={(k, v) => set({ [k]: v })} />
+        <AddStyle onAdd={(k, v) => setAny({ [k]: v })} />
       </Section>
 
       <ExportSection nodes={nodes} />

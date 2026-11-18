@@ -19,6 +19,8 @@ export interface PasteTarget {
 export const SNAPSHOT_MARKER = '<!--markup:snapshot v1-->';
 /** The extension also marks each snapshot root div, since clipboard sanitisers can drop the comment. */
 export const SNAPSHOT_ATTR = 'data-markup-snapshot';
+/** On an exact snapshot root: the payload is the page's own structure and CSS, parsed in the permissive dialect. */
+export const DIALECT_ATTR = 'data-markup-dialect';
 export const HEIC_MESSAGE = 'HEIC images are not supported in this browser.';
 const ARTBOARD_GAP = 80;
 const MAX_IMAGE_SIDE = 2000;
@@ -76,7 +78,7 @@ purifier.addHook('uponSanitizeAttribute', (_node, data) => {
 export function cleanHtml(html: string): string {
   const safe = purifier.sanitize(html, {
     FORBID_TAGS: ['style', 'meta', 'script', 'iframe', 'object', 'embed', 'link', 'o:p'],
-    ADD_ATTR: ['layer-name', 'data-source', SNAPSHOT_ATTR],
+    ADD_ATTR: ['layer-name', 'data-source', SNAPSHOT_ATTR, DIALECT_ATTR],
     ALLOW_DATA_ATTR: true,
   });
   const body = new DOMParser().parseFromString(`<body>${safe}</body>`, 'text/html').body;
@@ -144,10 +146,11 @@ async function imageSpec(file: File): Promise<NodeSpec> {
   return { type: 'image', name: file.name.replace(/\.[^.]+$/, '') || 'Image', src, styles: { width: `${width}px`, height: `${height}px` } };
 }
 
-/** Whether a top-level div of the cleaned markup carries the snapshot attribute. */
-function hasSnapshotRoot(cleaned: string): boolean {
+/** Whether a top-level div of the cleaned markup carries the snapshot attribute, and whether one asks for the `any` dialect. */
+function snapshotRoots(cleaned: string): { snapshot: boolean; any: boolean } {
   const body = new DOMParser().parseFromString(`<body>${cleaned}</body>`, 'text/html').body;
-  return Array.from(body.children).some((el) => el.localName === 'div' && el.hasAttribute(SNAPSHOT_ATTR));
+  const roots = Array.from(body.children).filter((el) => el.localName === 'div' && el.hasAttribute(SNAPSHOT_ATTR));
+  return { snapshot: roots.length > 0, any: roots.some((el) => el.getAttribute(DIALECT_ATTR) === 'any') };
 }
 
 /** Everything the clipboard holds, as node specs, plus whether it is a snapshot payload. */
@@ -158,8 +161,9 @@ async function toSpecs(data: PasteData): Promise<{ specs: NodeSpec[]; snapshot: 
   const html = data.html?.trim();
   if (html) {
     const cleaned = cleanHtml(html);
-    const snapshot = html.includes(SNAPSHOT_MARKER) || hasSnapshotRoot(cleaned);
-    const { specs } = parseHtml(cleaned);
+    const roots = snapshotRoots(cleaned);
+    const snapshot = html.includes(SNAPSHOT_MARKER) || roots.snapshot;
+    const { specs } = parseHtml(cleaned, { dialect: roots.any ? 'any' : 'strict' });
     if (specs.length) return { specs, snapshot };
   }
 

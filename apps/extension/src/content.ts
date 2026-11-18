@@ -9,9 +9,9 @@ interface Flagged {
 const w = window as unknown as Flagged;
 
 if (!w.__markupSnapshot) {
-  const picker: Picker = new Picker(document, (targets) => {
+  const picker: Picker = new Picker(document, (targets, mode = 'exact') => {
     // Called inside the Enter/click handler, so the clipboard write starts within the user gesture.
-    captureAndCopy(targets).then(
+    captureAndCopy(targets, mode).then(
       () => {
         // Like Paper: one snapshot per activation, then ⌘V in the app.
         picker.stop();

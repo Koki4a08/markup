@@ -29,14 +29,25 @@ export function isBanned(key: string, value: StyleValue | null): boolean {
   return false;
 }
 
+/**
+ * `strict` is Markup's layout dialect (flex, absolute, simple block); `any` keeps whatever CSS the HTML carries
+ * (margins, grid, inline and table display, inherited text properties on frames), for exact page snapshots.
+ */
+export type Dialect = 'strict' | 'any';
+
 export function normalizeStyles(
   styles: Record<string, StyleValue | null>,
   ctx: { type: MarkupNode['type']; isArtboard: boolean },
+  dialect: Dialect = 'strict',
 ): { styles: Record<string, StyleValue | null>; ignored: string[] } {
   const out: Record<string, StyleValue | null> = {};
   const ignored: string[] = [];
   for (const [rawKey, value] of Object.entries(styles)) {
     const key = camelCase(rawKey);
+    if (dialect === 'any') {
+      out[key] = typeof value === 'string' ? value.trim() : value;
+      continue;
+    }
     const inert = value !== null && TEXT_ONLY.has(key) && ctx.type !== 'text';
     if ((value !== null && isBanned(key, value)) || inert) ignored.push(key);
     else out[key] = typeof value === 'string' ? value.trim() : value;

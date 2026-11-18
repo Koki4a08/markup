@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { HINT } from '../src/picker/overlay';
 import { Picker } from '../src/picker/picker';
 
 let a: HTMLElement, b: HTMLElement, c: HTMLElement;
-let onCapture: Mock<(t: Element[] | 'page') => void>;
+let onCapture: Mock<(t: Element[] | 'page', mode?: 'exact' | 'simplified') => void>;
 let picker: Picker;
 
 const key = (k: string, init: KeyboardEventInit = {}) => {
@@ -68,6 +69,24 @@ describe('picker', () => {
     picker.start();
     key('Enter', { ctrlKey: true });
     expect(onCapture).toHaveBeenCalledWith('page');
+  });
+
+  it('Enter captures in exact mode; Alt+Enter and Alt+click in simplified mode', () => {
+    picker.start();
+    hover(c);
+    key('Enter');
+    expect(onCapture.mock.calls[0]![0]).toEqual([c]);
+    expect(onCapture.mock.calls[0]![1] ?? 'exact').toBe('exact');
+    key('Enter', { altKey: true });
+    expect(onCapture).toHaveBeenLastCalledWith([c], 'simplified');
+    click(b, { altKey: true });
+    expect(onCapture).toHaveBeenLastCalledWith([b], 'simplified');
+    key('Enter', { ctrlKey: true, altKey: true });
+    expect(onCapture).toHaveBeenLastCalledWith('page', 'simplified');
+  });
+
+  it('hint bar names both modes', () => {
+    expect(HINT).toBe('↑↓ adjust · Enter capture · ⌥Enter simplified · ⌘Enter page · Esc exit');
   });
 
   it('Escape stops and removes the overlay', () => {

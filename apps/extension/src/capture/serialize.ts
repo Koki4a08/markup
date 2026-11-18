@@ -1,5 +1,30 @@
+import {
+  attrs,
+  backdrop,
+  cleanSvg,
+  DEFAULT_LIMITS,
+  embedHost,
+  escAttr,
+  escText,
+  FIELDS,
+  fieldContent,
+  INLINE,
+  isElement,
+  isText,
+  readPseudo,
+  renderedChildren,
+  SKIP,
+  SNAPSHOT_ATTR,
+  SNAPSHOT_MARKER,
+  snapshotName,
+  TARGET_GAP,
+  TOO_LARGE,
+  visible,
+  type CaptureLimits,
+  type PseudoInfo,
+} from './dom';
 import type { CaptureEnv } from './env';
-import { backgroundDecls, firstUrl, ImageLoader, PLACEHOLDER_COLOR, PLACEHOLDER_NAME } from './images';
+import { backgroundDecls, ImageLoader, PLACEHOLDER_COLOR, PLACEHOLDER_NAME, screenImage } from './images';
 import {
   borders,
   boxDecls,
@@ -21,33 +46,7 @@ import {
   type Decl,
 } from './styles';
 
-export const SNAPSHOT_MARKER = '<!--markup:snapshot v1-->';
-/** On each snapshot root div; also how the capture skips Markup's own UI on the page. */
-export const SNAPSHOT_ATTR = 'data-markup-snapshot';
-export const TOO_LARGE = 'This page is too large to snapshot — pick a smaller element.';
-
-/** Caps that keep a full-page capture from exhausting memory or the clipboard. */
-export interface CaptureLimits {
-  /** Elements serialised before giving up with TOO_LARGE. */
-  maxNodes?: number;
-  /** Total data-URL characters across all inlined images; images past it become placeholders. */
-  imageBytes?: number;
-  /** Image fetches in flight at once. */
-  concurrency?: number;
-}
-
-export const DEFAULT_LIMITS: Required<CaptureLimits> = { maxNodes: 20_000, imageBytes: 40_000_000, concurrency: 6 };
-const TARGET_GAP = 80;
-
-/** Never rendered, or rendered by their parent. */
-const SKIP = new Set([
-  'head', 'script', 'style', 'link', 'meta', 'title', 'base', 'template', 'noscript', 'source', 'track', 'param',
-  'map', 'area', 'wbr', 'datalist', 'option', 'optgroup', 'colgroup', 'col',
-]);
-/** Inline formatting tags Markup keeps inside a text layer. */
-const INLINE = new Set(['span', 'b', 'strong', 'i', 'em', 'u', 's', 'a', 'br', 'code', 'sup', 'sub', 'small', 'mark']);
-const SHAPES = new Set(['path', 'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon', 'text', 'tspan', 'use']);
-const FIELDS = new Set(['input', 'textarea', 'select']);
+export { DEFAULT_LIMITS, SNAPSHOT_ATTR, SNAPSHOT_MARKER, TOO_LARGE, type CaptureLimits } from './dom';
 
 interface Box {
   x: number;
@@ -61,40 +60,6 @@ type Mode = { flow: true } | { flow: false; x: number; y: number };
 
 type Item = { el: Element } | { run: Node[] };
 
-interface PseudoInfo {
-  which: '::before' | '::after';
-  cs: CSSStyleDeclaration;
-  text: string;
-  image: string | null;
-  absolute: boolean;
-  boxy: boolean;
-  /** Plain inline text: merges into the owner's text layer as a span. */
-  inline: boolean;
-}
-
-const escText = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-const attrs = (decls: Decl[], name?: string) => {
-  const style = styleAttr(decls);
-  return `${name ? ` layer-name="${escAttr(name)}"` : ''}${style ? ` style="${escAttr(style)}"` : ''}`;
-};
-const isText = (n: Node): n is Text => n.nodeType === 3;
-const isElement = (n: Node): n is Element => n.nodeType === 1;
-
-/**
- * The children the page renders for el (its flat-tree children): an open shadow root's content in place of the
- * light DOM, with each <slot> replaced by the nodes assigned to it, or by its fallback content when none are.
- */
-function renderedChildren(el: Element): Node[] {
-  const out: Node[] = [];
-  for (const n of Array.from((el.shadowRoot ?? el).childNodes)) {
-    if (isElement(n) && n.localName === 'slot') {
-      const assigned = typeof (n as HTMLSlotElement).assignedNodes === 'function' ? (n as HTMLSlotElement).assignedNodes({ flatten: true }) : [];
-      out.push(...(assigned.length ? assigned : renderedChildren(n)));
-    } else out.push(n);
-  }
-  return out;
-}
 
 class Serializer {
   readonly images: ImageLoader;
@@ -157,10 +122,8 @@ class Serializer {
     return [...this.place(box, mode, cs), ...this.size(box), ...boxDecls(cs), ...(await backgroundDecls(cs, this.images))];
   }
 
-  visible(el: Element, cs: CSSStyleDeclaration): boolean {
-    const display = get(cs, 'display');
-    const visibility = get(cs, 'visibility');
-    return display !== 'none' && visibility !== 'hidden' && visibility !== 'collapse';
+  visible(_el: Element, cs: CSSStyleDeclaration): boolean {
+    return visible(cs);
   }
 
   async node(el: Element, mode: Mode): Promise<string> {
@@ -241,20 +204,7 @@ class Serializer {
   }
 
   pseudo(el: Element, which: '::before' | '::after'): PseudoInfo | null {
-    const cs = this.env.style(el, which);
-    const content = get(cs, 'content');
-    if (!content || content === 'none' || content === 'normal' || get(cs, 'display') === 'none') return null;
-    let text = '';
-    for (const m of content.matchAll(/"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|attr\(\s*([\w-]+)\s*\)/g)) {
-      text += m[3] ? (el.getAttribute(m[3]) ?? '') : (m[1] ?? m[2] ?? '').replace(/\\(.)/g, '$1');
-    }
-    const image = /url\(/i.test(content) ? firstUrl(content) : null;
-    const absolute = /^(absolute|fixed)$/.test(get(cs, 'position'));
-    const boxy = isBoxy(cs) || hasPadding(cs);
-    const sized = num(get(cs, 'width')) > 0 && num(get(cs, 'height')) > 0;
-    if (!text.trim() && !image && !(boxy && sized)) return null;
-    const inline = !!text.trim() && !image && !absolute && !boxy && get(cs, 'display') === 'inline';
-    return { which, cs, text, image, absolute, boxy, inline };
+    return readPseudo(this.env, el, which);
   }
 
   async element(el: Element, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
@@ -471,13 +421,8 @@ class Serializer {
   }
 
   /** The pixels the user sees, cut from a screenshot of the visible tab (private, cross-origin or tainted images). */
-  async fromScreen(el: Element): Promise<string | null> {
-    if (!this.env.snapshotRegion) return null;
-    try {
-      return this.images.admit(await this.env.snapshotRegion(this.env.rect(el)));
-    } catch {
-      return null;
-    }
+  fromScreen(el: Element): Promise<string | null> {
+    return screenImage(this.env, this.images, el);
   }
 
   async canvas(el: HTMLCanvasElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
@@ -511,108 +456,35 @@ class Serializer {
   }
 
   svg(el: SVGSVGElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): string {
-    const clone = el.cloneNode(true) as SVGSVGElement;
-    const originals = [el, ...Array.from(el.querySelectorAll('*'))];
-    const copies = [clone, ...Array.from(clone.querySelectorAll('*'))];
-    originals.forEach((orig, i) => {
-      const copy = copies[i]!;
-      const ocs = this.env.style(orig);
-      const color = get(ocs, 'color');
-      for (const a of Array.from(copy.attributes)) {
-        if (/^on/i.test(a.name)) copy.removeAttribute(a.name);
-        else if (/currentcolor/i.test(a.value) && color) copy.setAttribute(a.name, a.value.replace(/currentcolor/gi, color));
-      }
-      if (SHAPES.has(orig.localName)) {
-        for (const prop of ['fill', 'stroke']) {
-          const v = get(ocs, prop);
-          if (v && !/url\(|currentcolor/i.test(v)) copy.setAttribute(prop, v);
-        }
-      }
-    });
-    this.inlineSprites(clone, el);
-    clone.querySelectorAll('script, foreignObject').forEach((n) => n.remove());
-    clone.removeAttribute('class');
-    clone.setAttribute('width', String(Math.round(box.w * 100) / 100));
-    clone.setAttribute('height', String(Math.round(box.h * 100) / 100));
+    const clone = cleanSvg(el, this.env, box.w, box.h);
     const style = styleAttr([...this.place(box, mode, cs), ...this.size(box), ...boxDecls(cs).filter(([k]) => k !== 'overflow')]);
     if (style) clone.setAttribute('style', style);
     else clone.removeAttribute('style');
     return clone.outerHTML;
   }
 
-  /** `<use href="#icon">` pointing outside the svg (sprite sheets) is replaced by a copy of what it points at. */
-  inlineSprites(clone: SVGSVGElement, original: SVGSVGElement): void {
-    const doc = original.ownerDocument;
-    for (const use of Array.from(clone.querySelectorAll('use'))) {
-      const href = use.getAttribute('href') ?? use.getAttribute('xlink:href') ?? '';
-      if (!href.startsWith('#')) continue;
-      const id = href.slice(1);
-      if (Array.from(clone.querySelectorAll('[id]')).some((n) => n.id === id)) continue;
-      const target = doc.getElementById(id);
-      if (!target) continue;
-      const ns = 'http://www.w3.org/2000/svg';
-      const wrapper = doc.createElementNS(ns, target.localName === 'symbol' ? 'svg' : 'g');
-      for (const a of ['fill', 'stroke', 'color', 'x', 'y', 'width', 'height', 'transform']) {
-        const v = use.getAttribute(a);
-        if (v && !(wrapper.localName === 'g' && /^(x|y|width|height)$/.test(a))) wrapper.setAttribute(a, v);
-      }
-      if (target.localName === 'symbol') {
-        const vb = target.getAttribute('viewBox');
-        if (vb) wrapper.setAttribute('viewBox', vb);
-        for (const c of Array.from(target.childNodes)) wrapper.appendChild(c.cloneNode(true));
-      } else {
-        const copy = target.cloneNode(true) as Element;
-        copy.removeAttribute('id');
-        wrapper.appendChild(copy);
-      }
-      const color = use.getAttribute('fill') ?? use.getAttribute('color');
-      wrapper.querySelectorAll('*').forEach((n) => {
-        for (const a of Array.from(n.attributes)) if (/currentcolor/i.test(a.value) && color) n.setAttribute(a.name, a.value.replace(/currentcolor/gi, color));
-      });
-      use.replaceWith(wrapper);
-    }
-  }
-
   async field(el: HTMLInputElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
-    const tag = el.localName;
-    const type = tag === 'input' ? (el.getAttribute('type') ?? 'text').toLowerCase() : tag;
     const decls = await this.frameDecls(box, mode, cs);
-    if (type === 'checkbox' || type === 'radio') {
+    const f = fieldContent(el);
+    if (f.kind === 'check') {
       if (!isBoxy(cs)) {
         decls.push(['border-top', '1px solid #767676'], ['border-right', '1px solid #767676'], ['border-bottom', '1px solid #767676'], ['border-left', '1px solid #767676']);
-        decls.push(['border-radius', type === 'radio' ? '50%' : '3px'], ['background-color', el.checked ? '#2563eb' : '#ffffff']);
+        decls.push(['border-radius', f.type === 'radio' ? '50%' : '3px'], ['background-color', f.checked ? '#2563eb' : '#ffffff']);
       }
-      return `<div${attrs(decls, type)}></div>`;
+      return `<div${attrs(decls, f.type)}></div>`;
     }
-    let text = '';
-    let placeholder = false;
-    if (tag === 'select') text = (el as unknown as HTMLSelectElement).selectedOptions?.[0]?.text ?? '';
-    else if (type === 'password') text = '•'.repeat(el.value.length);
-    else if (/^(submit|button|reset)$/.test(type)) text = el.value || (type === 'reset' ? 'Reset' : type === 'submit' ? 'Submit' : '');
-    else text = el.value;
-    if (!text && el.getAttribute('placeholder')) {
-      text = el.getAttribute('placeholder')!;
-      placeholder = true;
-    }
-    const multiline = tag === 'textarea';
-    decls.push(['display', 'flex'], ['align-items', multiline ? 'flex-start' : 'center'], ...paddingDecls(cs));
-    if (/^(submit|button|reset)$/.test(type)) decls.push(['justify-content', 'center']);
+    decls.push(['display', 'flex'], ['align-items', f.multiline ? 'flex-start' : 'center'], ...paddingDecls(cs));
+    if (f.button) decls.push(['justify-content', 'center']);
     if (!decls.some(([k]) => k === 'overflow')) decls.push(['overflow', 'hidden']);
-    const tcs = placeholder ? this.env.style(el, '::placeholder') : cs;
+    const tcs = f.placeholder ? this.env.style(el, '::placeholder') : cs;
     const content = this.content(box, cs);
-    const p: Decl[] = [['flex-shrink', '0'], ['width', textWidth(content.w)], ...textDecls(tcs).filter(([k]) => k !== 'white-space'), ['white-space', multiline ? 'pre-wrap' : 'nowrap']];
-    const inner = text ? `<p${attrs(p)}>${escText(text).replace(/\r?\n/g, '<br>')}</p>` : '';
+    const p: Decl[] = [['flex-shrink', '0'], ['width', textWidth(content.w)], ...textDecls(tcs).filter(([k]) => k !== 'white-space'), ['white-space', f.multiline ? 'pre-wrap' : 'nowrap']];
+    const inner = f.text ? `<p${attrs(p)}>${escText(f.text).replace(/\r?\n/g, '<br>')}</p>` : '';
     return `<div${attrs(decls, el.getAttribute('name') || el.getAttribute('aria-label') || undefined)}>${inner}</div>`;
   }
 
   embed(el: Element, cs: CSSStyleDeclaration, box: Box, mode: Mode): string {
-    const src = el.getAttribute('src') ?? el.getAttribute('data') ?? '';
-    let host = el.localName;
-    try {
-      host = new URL(src, el.ownerDocument.baseURI).host || host;
-    } catch {
-      // Keep the tag name.
-    }
+    const host = embedHost(el);
     const decls: Decl[] = [
       ...this.place(box, mode, cs),
       ...this.size(box),
@@ -658,33 +530,7 @@ export async function capture(
   const width = Math.max(0, left - TARGET_GAP);
   const height = Math.max(0, ...boxes.map((b) => b.h));
   const root = styleAttr([['position', 'relative'], ['width', px(width)], ['height', px(height)], ['background-color', backdrop(els[0]!, env)]]);
-  const name = meta.title.trim() || hostOf(meta.url) || 'Snapshot';
+  const name = snapshotName(meta);
   // The attribute marks the root too: Chrome's async clipboard sanitiser can drop the comment.
   return `${SNAPSHOT_MARKER}<div ${SNAPSHOT_ATTR}="v1" layer-name="${escAttr(name)}" data-source="${escAttr(meta.url)}" style="${root}">${parts.join('')}</div>`;
-}
-
-const isOpaque = (color: string) => !!color && color !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(color.replace(/\s+/g, ' '));
-
-/**
- * The colour the target sits on in the page: its nearest ancestor with a background (the root of a whole-page
- * capture uses the html/body background, which CSS paints on the canvas). White when nothing is opaque.
- */
-function backdrop(target: Element, env: CaptureEnv): string {
-  const doc = target.ownerDocument;
-  const chain: Element[] = [];
-  if (target === doc.documentElement) chain.push(doc.documentElement, ...(doc.body ? [doc.body] : []));
-  else for (let a = target.parentElement; a; a = a.parentElement) chain.push(a);
-  for (const el of chain) {
-    const color = get(env.style(el), 'background-color');
-    if (isOpaque(color)) return color;
-  }
-  return 'rgb(255, 255, 255)';
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return '';
-  }
 }

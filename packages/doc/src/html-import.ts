@@ -1,6 +1,6 @@
 import { parseFragment, serialize, serializeOuter, type DefaultTreeAdapterMap } from 'parse5';
 import type { NodeSpec, NodeType, Styles } from './schema';
-import { normalizeStyles, parseStyleAttr } from './styles';
+import { normalizeStyles, parseStyleAttr, type Dialect } from './styles';
 
 type P5Node = DefaultTreeAdapterMap['childNode'];
 type P5Element = DefaultTreeAdapterMap['element'];
@@ -19,14 +19,20 @@ function isInlineOnly(el: P5Parent): boolean {
   return el.childNodes.every((c) => isText(c) || (isElement(c) && INLINE.has(c.tagName) && isInlineOnly(c)) || c.nodeName === '#comment');
 }
 
-export function parseHtml(html: string): { specs: NodeSpec[]; ignored: string[] } {
+/**
+ * HTML → node specs. In the `any` dialect styles are kept as written and a text node keeps the whitespace at its
+ * edges (exact snapshots lay text out in inline flow, where those spaces separate words across nodes).
+ */
+export function parseHtml(html: string, opts: { dialect?: Dialect } = {}): { specs: NodeSpec[]; ignored: string[] } {
+  const dialect = opts.dialect ?? 'strict';
+  const edge = (s: string) => (dialect === 'any' ? s : s.trim());
   const ignored = new Set<string>();
   const fragment = parseFragment(html);
 
   const stylesFor = (el: P5Element, type: NodeType): Styles | undefined => {
     const raw = attr(el, 'style');
     if (!raw) return undefined;
-    const { styles, ignored: dropped } = normalizeStyles(parseStyleAttr(raw), { type, isArtboard: false });
+    const { styles, ignored: dropped } = normalizeStyles(parseStyleAttr(raw), { type, isArtboard: false }, dialect);
     dropped.forEach((k) => ignored.add(k));
     return styles as Styles;
   };
@@ -82,7 +88,7 @@ export function parseHtml(html: string): { specs: NodeSpec[]; ignored: string[] 
       return withName(spec, el);
     }
     if (TEXT_TAGS.has(tag) && isInlineOnly(el)) {
-      const spec: NodeSpec = { type: 'text', text: serialize(el).trim() };
+      const spec: NodeSpec = { type: 'text', text: edge(serialize(el)) };
       const styles = stylesFor(el, 'text');
       if (styles) spec.styles = styles;
       return withName(spec, el);

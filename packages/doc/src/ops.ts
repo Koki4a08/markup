@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import type { MarkupDoc } from './document';
 import { MarkupError, type Actor, type MarkupNode, type NodeSpec, type StyleValue } from './schema';
-import { normalizeStyles } from './styles';
+import { normalizeStyles, type Dialect } from './styles';
 import { createYNode, newId, type YNode } from './ynode';
 
 export type Move =
@@ -133,14 +133,14 @@ export function replaceNode(doc: MarkupDoc, targetId: string, specs: NodeSpec[])
   return insertNodes(doc, parentId, specs, index);
 }
 
-export function updateStyles(doc: MarkupDoc, updates: StyleUpdate[]): Record<string, string[]> {
+export function updateStyles(doc: MarkupDoc, updates: StyleUpdate[], dialect: Dialect = 'strict'): Record<string, string[]> {
   const ignoredStyles: Record<string, string[]> = {};
   updates.forEach((u) => u.nodeIds.forEach((id) => doc.yNode(id)));
   for (const { nodeIds, styles: raw } of updates) {
     for (const id of nodeIds) {
       const node = doc.yNode(id);
       const type = node.get('type') as MarkupNode['type'];
-      const { styles, ignored } = normalizeStyles(raw, { type, isArtboard: artboardOf(doc, id) === id });
+      const { styles, ignored } = normalizeStyles(raw, { type, isArtboard: artboardOf(doc, id) === id }, dialect);
       if (ignored.length) ignoredStyles[id] = [...(ignoredStyles[id] ?? []), ...ignored];
       const map = stylesOf(node);
       for (const [key, value] of Object.entries(styles)) {

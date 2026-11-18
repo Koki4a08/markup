@@ -1,6 +1,6 @@
 export * from './schema';
 export { MarkupDoc } from './document';
-export { normalizeStyles, parseStyleAttr, camelCase } from './styles';
+export { normalizeStyles, parseStyleAttr, camelCase, type Dialect } from './styles';
 export { parseHtml } from './html-import';
 export type { ArrangeItem, PageUpdate } from './pages';
 export type { Move, MoveResult, DuplicateResult, StyleUpdate } from './ops';

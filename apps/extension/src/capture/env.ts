@@ -16,6 +16,11 @@ export interface CaptureEnv {
   textRect?(nodes: Node[]): DOMRect | null;
   /** A PNG data URL of what the visible tab shows inside a page-coordinate rect, or null when it is off screen. */
   snapshotRegion?(rect: DOMRect): Promise<string | null>;
+  /**
+   * The computed style of a blank, unrendered div (the initial values the exact serializer leaves out). Read once
+   * per capture; the exact serializer falls back to the CSS initial values when absent.
+   */
+  blankStyle?(): CSSStyleDeclaration | null;
 }
 
 const MAX_RASTER_SIDE = 4096;
@@ -62,6 +67,27 @@ export function browserEnv(win: Window = window): CaptureEnv {
   const shift = (r: DOMRect) => new DOMRect(r.x + win.scrollX, r.y + win.scrollY, r.width, r.height);
   return {
     snapshotRegion: screenRegions(win),
+    blankStyle() {
+      // A hidden iframe is a clean document: none of the page's own CSS reaches its div. It is marked so a capture
+      // running meanwhile skips it, and removed once the values are copied out.
+      const frame = doc.createElement('iframe');
+      frame.setAttribute('data-markup-snapshot', '');
+      frame.style.cssText = 'display:none';
+      doc.documentElement.appendChild(frame);
+      try {
+        const fdoc = frame.contentDocument;
+        const fwin = frame.contentWindow;
+        if (!fdoc || !fwin) return null;
+        const div = fdoc.createElement('div');
+        (fdoc.body ?? fdoc.documentElement).appendChild(div);
+        const live = fwin.getComputedStyle(div);
+        const copy: Record<string, string> = {};
+        for (let i = 0; i < live.length; i++) copy[live[i]!] = live.getPropertyValue(live[i]!);
+        return { getPropertyValue: (p: string) => copy[p] ?? '' } as unknown as CSSStyleDeclaration;
+      } finally {
+        frame.remove();
+      }
+    },
     style: (el, pseudo) => win.getComputedStyle(el, pseudo),
     rect: (el) => shift(el.getBoundingClientRect()),
     textRect(nodes) {
