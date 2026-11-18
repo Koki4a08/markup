@@ -1,3 +1,4 @@
+import { visibleShape } from '../capture/clip';
 const STYLE = `
 :host { all: initial; }
 * { box-sizing: border-box; pointer-events: none; }
@@ -47,7 +48,7 @@ export class Overlay {
       return;
     }
     const r = target.getBoundingClientRect();
-    place(this.box, r);
+    placeShape(this.box, target);
     this.label.textContent = describe(target, r);
     this.label.style.display = 'block';
     this.label.style.left = `${Math.max(0, r.left)}px`;
@@ -61,7 +62,7 @@ export class Overlay {
       this.root.appendChild(d);
       this.picked.push(d);
     }
-    elements.forEach((el, i) => place(this.picked[i]!, el.getBoundingClientRect()));
+    elements.forEach((el, i) => placeShape(this.picked[i]!, el));
   }
 
   toast(message: string, error = false): void {
@@ -76,6 +77,16 @@ export class Overlay {
     clearTimeout(this.toastTimer);
     this.host.remove();
   }
+}
+
+const viewportShapeEnv = (win: Window) => ({ style: (el: Element) => win.getComputedStyle(el), rect: (el: Element) => el.getBoundingClientRect() });
+
+/** Outlines what the page actually shows of an element: cut by clipping ancestors, with its rounded corners. */
+function placeShape(box: HTMLElement, el: Element): void {
+  const win = el.ownerDocument.defaultView ?? window;
+  const shape = visibleShape(el, viewportShapeEnv(win));
+  place(box, shape.rect);
+  box.style.borderRadius = shape.radii.join(' ');
 }
 
 /** A full-viewport, click-through host with the overlay styles in a closed shadow root. Capture skips it. */

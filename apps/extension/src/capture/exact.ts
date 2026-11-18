@@ -3,6 +3,7 @@
  * dialect. Markup's canvas renders real HTML/CSS, so the same CSS lays out the same way — no re-derivation into
  * flex/absolute (that is the simplified serializer in serialize.ts).
  */
+import { needsBackdrop, rootClip } from './clip';
 import {
   attrs,
   backdrop,
@@ -555,7 +556,16 @@ export async function captureExact(
   if (!parts.some(Boolean)) throw new Error('Nothing to capture: the selection is hidden or empty');
   const width = Math.max(0, left - TARGET_GAP);
   const height = Math.max(0, ...rects.map((r) => r.height));
-  const root: Decl[] = [['position', 'relative'], ['width', px(width)], ['height', px(height)], ['background-color', backdrop(first, env)], ...x.inherited(rootCs, null)];
+  const single = els.length === 1 && targets !== 'page';
+  const root: Decl[] = [
+    ['position', 'relative'],
+    ['width', px(width)],
+    ['height', px(height)],
+    // An opaque target paints itself; a square backdrop would show behind its rounded corners.
+    ...(single && !needsBackdrop(first, env) ? [] : ([['background-color', backdrop(first, env)]] as Decl[])),
+    ...(single ? rootClip(first, env) : []),
+    ...x.inherited(rootCs, null),
+  ];
   // The attribute marks the root too: Chrome's async clipboard sanitiser can drop the comment.
   return `${SNAPSHOT_MARKER}<div ${SNAPSHOT_ATTR}="v1" layer-name="${escAttr(snapshotName(meta))}" data-source="${escAttr(meta.url)}" ${DIALECT_ATTR}="any" style="${escAttr(styleAttr(root))}">${parts.join('')}</div>`;
 }
