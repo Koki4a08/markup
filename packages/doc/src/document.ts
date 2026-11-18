@@ -1,4 +1,6 @@
 import * as Y from 'yjs';
+import * as comments from './comments';
+import type { CommentThread } from './comments';
 import { appendEntry, EntryHistory, plural, readLog, type LogEntry } from './history';
 import { parseHtml } from './html-import';
 import * as ops from './ops';
@@ -181,6 +183,31 @@ export class MarkupDoc {
 
   getTokens(q?: TokenQuery): Token[] | string {
     return tokens.getTokens(this, q);
+  }
+
+  createThread(actor: Actor, opts: { pageId: string; nodeId: string | null; x: number; y: number; body: string }, summary?: string): string {
+    return this.mutate(actor, summary ?? 'Commented', () => comments.createThread(this, actor, opts));
+  }
+
+  reply(actor: Actor, threadId: string, body: string, summary?: string): string {
+    return this.mutate(actor, summary ?? 'Replied to comment', () => comments.reply(this, actor, threadId, body));
+  }
+
+  setThreadStatus(actor: Actor, threadId: string, status: 'open' | 'resolved', summary?: string): void {
+    this.mutate(actor, summary ?? (status === 'resolved' ? 'Resolved comment' : 'Reopened comment'), () => comments.setThreadStatus(this, threadId, status));
+  }
+
+  deleteMessage(actor: Actor, threadId: string, messageId: string, summary?: string): void {
+    this.mutate(actor, summary ?? 'Deleted a comment message', () => comments.deleteMessage(this, threadId, messageId));
+  }
+
+  react(actor: Actor, threadId: string, messageId: string, emoji: string, summary?: string): void {
+    this.mutate(actor, summary ?? 'Reacted to a comment', () => comments.react(this, actor, threadId, messageId, emoji));
+  }
+
+  /** Visible comment threads; deleted threads and messages are excluded. */
+  threads(): CommentThread[] {
+    return comments.listThreads(this);
   }
 
   log(): LogEntry[] {

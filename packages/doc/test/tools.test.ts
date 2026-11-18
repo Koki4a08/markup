@@ -7,7 +7,7 @@ function setup() {
   const doc = new MarkupDoc({ name: 'Landing' });
   const page = doc.pages()[0]!;
   if (page.type !== 'page') throw new Error('unreachable');
-  const run = (method: Parameters<typeof runDocTool>[2], params: unknown) => runDocTool(doc, agent, method, params, { activePageId: page.id });
+  const run = (method: Parameters<typeof runDocTool>[2], params: unknown) => runDocTool(doc, agent, method, params, { activePageId: page.id, currentUserId: 'local-user' });
   return { doc, page, run };
 }
 

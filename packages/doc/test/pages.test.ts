@@ -85,7 +85,7 @@ describe('arrange_pages', () => {
 describe('page tools via runDocTool', () => {
   it('runDocTool update_pages / arrange_pages', () => {
     const { doc, a, b, c } = setup();
-    const run = (m: 'update_pages' | 'arrange_pages', p: unknown) => runDocTool(doc, agent, m, p, { activePageId: a });
+    const run = (m: 'update_pages' | 'arrange_pages', p: unknown) => runDocTool(doc, agent, m, p, { activePageId: a, currentUserId: 'local-user' });
     run('update_pages', { updates: [{ pageId: b, name: 'Renamed', icon: 'paper' }] });
     expect(doc.pages()[1]).toMatchObject({ name: 'Renamed', icon: 'paper' });
     const out = run('arrange_pages', { order: [c, { type: 'divider' }, a, b] }) as { pages: { type: string }[] };

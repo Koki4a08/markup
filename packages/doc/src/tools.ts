@@ -1,4 +1,5 @@
 import { tools, type DocToolName, type ToolParams } from '@markup/protocol';
+import { queryThreads, threadAuthors } from './comments';
 import type { MarkupDoc } from './document';
 import { toJsx } from './jsx-export';
 import { parsePx, rightEdge } from './ops';
@@ -11,6 +12,8 @@ const COMPONENT: Record<MarkupNode['type'], string> = { root: 'Root', frame: 'Fr
 
 export interface ToolContext {
   activePageId: string;
+  /** Id of the signed-in user; "current-user" in comment filters resolves to it. */
+  currentUserId: string;
 }
 
 function parse<T extends DocToolName>(method: T, params: unknown): ToolParams<T> {
@@ -187,6 +190,31 @@ export function runDocTool(doc: MarkupDoc, actor: Actor, method: DocToolName, ra
     case 'arrange_pages': {
       const p = parse(method, rawParams);
       return { pages: doc.arrangePages(actor, p.order, p.removeDividerIds) };
+    }
+    case 'list_comment_threads': {
+      const p = parse(method, rawParams);
+      return queryThreads(doc, { ...p, activePageId: ctx.activePageId, currentUserId: ctx.currentUserId });
+    }
+    case 'get_comment_thread': {
+      const p = parse(method, rawParams);
+      const t = doc.threads().find((x) => x.id === p.commentThreadId);
+      if (!t) throw new MarkupError('INVALID_ARGUMENT', `Comment thread ${p.commentThreadId} does not exist.`);
+      const page = doc.pages().find((x) => x.type === 'page' && x.id === t.pageId);
+      const node = t.nodeId ? doc.getNode(t.nodeId) : undefined;
+      return {
+        ...t,
+        pageName: page?.type === 'page' ? page.name : null,
+        node: node ? { id: node.id, name: node.name, component: COMPONENT[node.type] } : null,
+      };
+    }
+    case 'list_comment_thread_authors': {
+      const p = parse(method, rawParams);
+      return threadAuthors(doc, p.pageId);
+    }
+    case 'set_comment_thread_status': {
+      const p = parse(method, rawParams);
+      doc.setThreadStatus(actor, p.commentThreadId, p.status);
+      return { commentThreadId: p.commentThreadId, status: p.status };
     }
     default: {
       const never: never = method;

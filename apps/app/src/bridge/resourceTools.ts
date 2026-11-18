@@ -59,7 +59,7 @@ export async function runResourceTool(workspace: Workspace, method: ResourceTool
       const p = parse(method, rawParams);
       const ref = parseFileRef(p.fileId);
       const doc = await workspace.open(ref.fileId, p.pageId ?? ref.pageId);
-      return runDocTool(doc, ctx.actor, 'get_basic_info', {}, { activePageId: workspace.activePageId(doc.fileId) });
+      return runDocTool(doc, ctx.actor, 'get_basic_info', {}, { activePageId: workspace.activePageId(doc.fileId), currentUserId: 'local-user' });
     }
     case 'create_file': {
       const p = parse(method, rawParams);
