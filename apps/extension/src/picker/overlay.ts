@@ -24,18 +24,13 @@ export class Overlay {
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly doc: Document) {
-    this.host = doc.createElement('div');
-    this.host.setAttribute('data-markup-snapshot', '');
-    this.host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;';
-    this.root = this.host.attachShadow({ mode: 'closed' });
-    const style = doc.createElement('style');
-    style.textContent = STYLE;
+    [this.host, this.root] = shadowHost(doc);
     this.box = this.div('box');
     this.label = this.div('label');
     const hint = this.div('hint');
     hint.textContent = HINT;
     this.toastEl = this.div('toast');
-    this.root.append(style, this.box, this.label, hint, this.toastEl);
+    this.root.append(this.box, this.label, hint, this.toastEl);
     doc.documentElement.appendChild(this.host);
   }
 
@@ -81,6 +76,30 @@ export class Overlay {
     clearTimeout(this.toastTimer);
     this.host.remove();
   }
+}
+
+/** A full-viewport, click-through host with the overlay styles in a closed shadow root. Capture skips it. */
+function shadowHost(doc: Document): [HTMLElement, ShadowRoot] {
+  const host = doc.createElement('div');
+  host.setAttribute('data-markup-snapshot', '');
+  host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;';
+  const root = host.attachShadow({ mode: 'closed' });
+  const style = doc.createElement('style');
+  style.textContent = STYLE;
+  root.append(style);
+  return [host, root];
+}
+
+/** A toast that outlives the picker overlay (shown after a successful capture stops the picker). */
+export function flashToast(doc: Document, message: string, error = false): void {
+  const [host, root] = shadowHost(doc);
+  const toast = doc.createElement('div');
+  toast.className = error ? 'toast error' : 'toast';
+  toast.style.display = 'block';
+  toast.textContent = message;
+  root.append(toast);
+  doc.documentElement.appendChild(host);
+  setTimeout(() => host.remove(), 2500);
 }
 
 function place(el: HTMLElement, r: DOMRect): void {
