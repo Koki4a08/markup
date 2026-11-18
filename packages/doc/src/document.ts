@@ -1,67 +1,15 @@
-import { nanoid } from 'nanoid';
 import * as Y from 'yjs';
+import * as ops from './ops';
+import type { DuplicateResult, Move, MoveResult, StyleUpdate } from './ops';
+import { createYNode, newId, snapshotNode, type YNode } from './ynode';
 import {
   MarkupError,
   type Actor,
   type MarkupNode,
+  type NodeSpec,
   type PageEntry,
   type PageIcon,
-  type Styles,
 } from './schema';
-
-export type YNode = Y.Map<unknown>;
-
-export const newId = (): string => nanoid(10);
-
-/** Builds the Y.Map for one node. Caller inserts it into the nodes map. */
-export function createYNode(fields: {
-  id: string;
-  type: MarkupNode['type'];
-  name: string;
-  parentId: string | null;
-  styles?: Styles;
-  text?: string;
-  src?: string;
-  svg?: string;
-  locked?: boolean;
-  hidden?: boolean;
-}): YNode {
-  const node = new Y.Map<unknown>();
-  node.set('id', fields.id);
-  node.set('type', fields.type);
-  node.set('name', fields.name);
-  node.set('parentId', fields.parentId);
-  node.set('locked', fields.locked ?? false);
-  node.set('hidden', fields.hidden ?? false);
-  if (fields.text !== undefined) node.set('text', fields.text);
-  if (fields.src !== undefined) node.set('src', fields.src);
-  if (fields.svg !== undefined) node.set('svg', fields.svg);
-  const styles = new Y.Map<unknown>();
-  for (const [k, v] of Object.entries(fields.styles ?? {})) styles.set(k, v);
-  node.set('styles', styles);
-  node.set('children', new Y.Array<string>());
-  return node;
-}
-
-export function snapshotNode(node: YNode): MarkupNode {
-  const styles = node.get('styles') as Y.Map<unknown>;
-  const children = node.get('children') as Y.Array<string>;
-  const out: MarkupNode = {
-    id: node.get('id') as string,
-    type: node.get('type') as MarkupNode['type'],
-    name: node.get('name') as string,
-    parentId: (node.get('parentId') as string | null) ?? null,
-    children: children.toArray(),
-    styles: styles.toJSON() as Styles,
-    locked: Boolean(node.get('locked')),
-    hidden: Boolean(node.get('hidden')),
-  };
-  for (const key of ['text', 'src', 'svg'] as const) {
-    const v = node.get(key);
-    if (typeof v === 'string') out[key] = v;
-  }
-  return out;
-}
 
 export class MarkupDoc {
   readonly ydoc: Y.Doc;
@@ -156,6 +104,60 @@ export class MarkupDoc {
 
   nodeCount(): number {
     return this.nodes.size;
+  }
+
+  insertNodes(actor: Actor, parentId: string, specs: NodeSpec[], index?: number): string[] {
+    return this.mutate(actor, () => ops.insertNodes(this, parentId, specs, index));
+  }
+
+  replaceNode(actor: Actor, targetId: string, specs: NodeSpec[]): string[] {
+    return this.mutate(actor, () => ops.replaceNode(this, targetId, specs));
+  }
+
+  updateStyles(actor: Actor, updates: StyleUpdate[]): { ignoredStyles: Record<string, string[]> } {
+    this.mutate(actor, () => ops.updateStyles(this, updates));
+    return { ignoredStyles: {} };
+  }
+
+  setText(actor: Actor, updates: { nodeId: string; html: string }[]): void {
+    this.mutate(actor, () => ops.setText(this, updates));
+  }
+
+  moveNodes(actor: Actor, moves: Move[]): MoveResult {
+    return this.mutate(actor, () => ops.moveNodes(this, moves));
+  }
+
+  deleteNodes(actor: Actor, ids: string[]): void {
+    this.mutate(actor, () => ops.deleteNodes(this, ids));
+  }
+
+  duplicateNodes(actor: Actor, items: { id: string; parentId?: string }[]): DuplicateResult[] {
+    return this.mutate(actor, () => ops.duplicateNodes(this, items));
+  }
+
+  renameNodes(actor: Actor, updates: { nodeId: string; name: string }[]): void {
+    this.mutate(actor, () => ops.renameNodes(this, updates));
+  }
+
+  setWorking(actor: Actor, artboardIds: string[] | 'all', on: boolean): void {
+    this.mutate(actor, () => ops.setWorking(this, actor, artboardIds, on));
+  }
+
+  working(): Record<string, Actor> {
+    return this.ydoc.getMap<Actor>('working').toJSON() as Record<string, Actor>;
+  }
+
+  artboardOf(nodeId: string): string | null {
+    return ops.artboardOf(this, nodeId);
+  }
+
+  /** Runs fn in one transaction whose origin is the actor. */
+  protected mutate<T>(actor: Actor, fn: () => T): T {
+    let result!: T;
+    this.ydoc.transact(() => {
+      result = fn();
+    }, actor);
+    return result;
   }
 
   private insertPage(name: string, icon: PageIcon | null): string {
