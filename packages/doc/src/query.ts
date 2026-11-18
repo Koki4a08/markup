@@ -2,6 +2,8 @@ import type { MarkupDoc } from './document';
 import { parsePx } from './ops';
 import type { MarkupNode, StyleValue } from './schema';
 import { camelCase } from './styles';
+import { resolveTokenValue } from './tokens';
+import { wildcard } from './wildcard';
 
 const MAX_DEPTH = 10;
 
@@ -37,11 +39,6 @@ export function treeSummary(doc: MarkupDoc, nodeId: string, depth = 3): string {
   };
   walk(nodeId, 0);
   return out.join('\n');
-}
-
-export function wildcard(pattern: string, flags = ''): RegExp {
-  const escaped = pattern.split('*').map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
-  return new RegExp(`^${escaped}$`, flags);
 }
 
 /** Normalizes hex, rgb() and rgba() to `r,g,b,a`; undefined when the value is not a simple color. */
@@ -96,7 +93,11 @@ export function valueMatcher(doc: MarkupDoc, styleValue: string | undefined): (v
   if (color) {
     return (v) => {
       const raw = String(v);
-      return parseColor(raw) === color ? raw : undefined;
+      if (parseColor(raw) === color) return raw;
+      for (const ref of raw.match(/var\(\s*--[\w-]+\s*\)/g) ?? []) {
+        if (parseColor(resolveTokenValue(doc, ref)) === color) return ref;
+      }
+      return undefined;
     };
   }
   const re = wildcard(styleValue, 'i');
