@@ -65,4 +65,12 @@ describe('NodeView', () => {
     expect(el.style.left).toBe('120px');
     expect(el.style.opacity).toBe('0.5');
   });
+
+  it('text renders without the browser default paragraph margin', () => {
+    const { container, doc, artboard } = setup();
+    act(() => {
+      doc.insertNodes(human, artboard, [{ type: 'text', text: 'Hi' }]);
+    });
+    expect((container.querySelector('p') as HTMLElement).style.margin).toBe('0px');
+  });
 });

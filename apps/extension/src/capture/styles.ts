@@ -96,10 +96,35 @@ export function boxDecls(cs: CSSStyleDeclaration): Decl[] {
 }
 
 /** First font family; named families are quoted with plain quotes, generic keywords stay bare. */
-export function firstFamily(value: string): string {
-  const first = (value.split(',')[0] ?? '').trim().replace(/["'\\]/g, '').trim();
-  if (!first) return '';
-  return GENERIC_FAMILIES.has(first.toLowerCase()) ? first : `'${first}'`;
+/** Splits a computed font-family list on top-level commas (quoted names may contain commas). */
+function splitFamilies(value: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quote: string | null = null;
+  for (const ch of value) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === ',') {
+      out.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out.map((f) => f.replace(/\\/g, '').trim()).filter(Boolean);
+}
+
+/**
+ * The whole font stack, so a family missing on the viewer's machine (e.g. -apple-system on Windows) falls back
+ * the way the page does. Generic and single-identifier names stay bare; others get plain single quotes (the app's
+ * paste sanitiser drops any declaration with a backslash).
+ */
+export function fontStack(value: string): string {
+  return splitFamilies(value)
+    .filter((f) => !f.includes("'"))
+    .map((f) => (GENERIC_FAMILIES.has(f.toLowerCase()) || /^-?[a-zA-Z_][\w-]*$/.test(f) ? f : `'${f}'`))
+    .join(', ');
 }
 
 const TEXT_ALIGN: Record<string, string> = { left: 'left', right: 'right', center: 'center', justify: 'justify', end: 'right', '-webkit-center': 'center', '-webkit-right': 'right' };
@@ -111,7 +136,7 @@ export function textDecls(cs: CSSStyleDeclaration): Decl[] {
     if (value && !skip.includes(value)) out.push([prop, value]);
   };
   add('color', get(cs, 'color'));
-  add('font-family', firstFamily(get(cs, 'font-family')));
+  add('font-family', fontStack(get(cs, 'font-family')));
   add('font-size', get(cs, 'font-size'));
   add('font-weight', get(cs, 'font-weight'));
   add('font-style', get(cs, 'font-style'), ['normal']);
