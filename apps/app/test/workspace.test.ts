@@ -20,6 +20,16 @@ describe('workspace', () => {
     expect(workspace.tabs()).toEqual([{ fileId: id, name: 'Landing', active: true }]);
   });
 
+  it('open emits reveal every time, also for the file already in front', async () => {
+    const { workspace, addFile } = memoryWorkspace();
+    const id = addFile('Front');
+    const revealed: string[] = [];
+    workspace.on('reveal', (fileId) => revealed.push(fileId));
+    await workspace.open(id);
+    await workspace.open(id);
+    expect(revealed).toEqual([id, id]);
+  });
+
   it('close keeps others', async () => {
     const { workspace, addFile, released } = memoryWorkspace();
     const one = addFile('One');

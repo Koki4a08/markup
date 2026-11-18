@@ -45,7 +45,7 @@ export function App() {
   );
 }
 
-function Shell() {
+export function Shell() {
   const { workspace } = useWorkspace();
   const tabs = useTabs();
   const active = tabs.find((t) => t.active);
@@ -58,6 +58,8 @@ function Shell() {
   useEffect(() => {
     setDashboard(activeId === null);
   }, [activeId]);
+  // open() on the tab already in front changes nothing above, but must still leave the dashboard.
+  useEffect(() => workspace.on('reveal', () => setDashboard(false)), [workspace]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

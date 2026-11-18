@@ -63,6 +63,7 @@ export class Workspace {
   private order: string[] = [];
   private active: string | null = null;
   private readonly listeners = new Set<() => void>();
+  private readonly revealListeners = new Set<(fileId: string) => void>();
 
   constructor(opts: WorkspaceOptions) {
     this.opts = opts;
@@ -73,19 +74,28 @@ export class Workspace {
     return this.order.map((fileId) => ({ fileId, name: this.library.get(fileId)?.name ?? this.openTabs.get(fileId)!.doc.name, active: fileId === this.active }));
   }
 
-  /** Opens a file as a tab and brings it to the foreground. pageId applies only when the file was not open yet. */
-  open(fileId: string, pageId?: string): Promise<MarkupDoc> {
+  /**
+   * Opens a file as a tab and brings it to the foreground, emitting 'reveal' every time so the
+   * UI shows its editor even when it was already the active tab. pageId applies only when the
+   * file was not open yet.
+   */
+  async open(fileId: string, pageId?: string): Promise<MarkupDoc> {
     const existing = this.openTabs.get(fileId);
+    let doc: MarkupDoc;
     if (existing) {
       this.activate(fileId);
-      return Promise.resolve(existing.doc);
+      doc = existing.doc;
+    } else {
+      let pending = this.opening.get(fileId);
+      if (!pending) {
+        pending = this.load(fileId, pageId).finally(() => this.opening.delete(fileId));
+        this.opening.set(fileId, pending);
+      }
+      doc = await pending;
     }
-    let pending = this.opening.get(fileId);
-    if (!pending) {
-      pending = this.load(fileId, pageId).finally(() => this.opening.delete(fileId));
-      this.opening.set(fileId, pending);
-    }
-    return pending;
+    // Skip the reveal if the tab was closed while it was opening.
+    if (this.openTabs.get(fileId)?.doc === doc) for (const fn of [...this.revealListeners]) fn(fileId);
+    return doc;
   }
 
   close(fileId: string): void {
@@ -181,9 +191,13 @@ export class Workspace {
     return item;
   }
 
-  on(_event: 'change', fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
+  /** 'change': tabs, names or the active tab changed. 'reveal': a file was asked to come to the foreground. */
+  on(event: 'change', fn: () => void): () => void;
+  on(event: 'reveal', fn: (fileId: string) => void): () => void;
+  on(event: 'change' | 'reveal', fn: (fileId: string) => void): () => void {
+    const set: Set<(fileId: string) => void> = event === 'reveal' ? this.revealListeners : this.listeners;
+    set.add(fn);
+    return () => set.delete(fn);
   }
 
   /** Releases every open doc without notifying listeners; for teardown. */
