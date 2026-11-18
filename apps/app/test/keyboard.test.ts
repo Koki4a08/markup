@@ -18,6 +18,12 @@ describe('keymap', () => {
     expect(resolveShortcut(key('A', { shift: true }), true)).toBe('wrapInFlex');
   });
 
+  it('maps paste on top and paste to replace', () => {
+    expect(resolveShortcut(key('v', { meta: true, shift: true }), true)).toBe('pasteOnTop');
+    expect(resolveShortcut(key('r', { ctrl: true, shift: true }), false)).toBe('pasteToReplace');
+    expect(resolveShortcut(key('v', { meta: true }), true)).toBeNull();
+  });
+
   it('maps tools and mod shortcuts per platform', () => {
     expect(resolveShortcut(key('v'), true)).toBe('tool:move');
     expect(resolveShortcut(key('t'), true)).toBe('tool:text');
