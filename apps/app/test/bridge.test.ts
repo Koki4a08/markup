@@ -40,6 +40,29 @@ async function setup() {
 }
 
 describe('bridge client', () => {
+  it('archived files stop taking agent edits and cannot be opened', async () => {
+    const { hub, bridge, workspace, library, addFile, doc } = await setup();
+    const landing = doc.fileId;
+    const pricing = addFile('Pricing');
+    await hub.request({ method: 'open_file', params: { fileId: pricing }, agent });
+    // Archived from the dashboard: its tab closes and routed calls are refused.
+    library.archive([landing]);
+    expect(workspace.tabs().map((t) => t.fileId)).toEqual([pricing]);
+    const archived = { code: 'FILE_NOT_OPEN', message: expect.stringMatching(/archived.*unarchive_resources/) };
+    await expect(hub.request({ fileId: landing, method: 'create_artboard', params: { fileId: landing, name: 'A', styles: { width: '10px', height: '10px' } }, agent })).rejects.toMatchObject(archived);
+    await expect(hub.request({ method: 'open_file', params: { fileId: landing }, agent })).rejects.toMatchObject(archived);
+    // The editor itself names the reason, even when the hub's tab list is stale.
+    const direct = await bridge.handle({ type: 'request', id: 'r1', fileId: landing, method: 'get_basic_info', params: {}, agent });
+    expect(direct).toMatchObject({ ok: false, error: { code: 'FILE_NOT_OPEN', message: expect.stringContaining('is archived') } });
+    // Archived by an agent.
+    await hub.request({ method: 'archive_resources', params: { resourceIds: [pricing] }, agent });
+    expect(workspace.tabs()).toEqual([]);
+    await expect(hub.request({ fileId: pricing, method: 'get_basic_info', params: { fileId: pricing }, agent })).rejects.toMatchObject(archived);
+    // Unarchived files open again.
+    await hub.request({ method: 'unarchive_resources', params: { resourceIds: [landing] }, agent });
+    await expect(hub.request({ method: 'open_file', params: { fileId: landing }, agent })).resolves.toMatchObject({ fileName: 'Landing' });
+  });
+
   it('runs write_html as agent actor', async () => {
     const { hub, doc } = await setup();
     const { nodeId } = (await hub.request({ method: 'create_artboard', params: { name: 'Hero', styles: { width: '1440px', height: '900px' } }, agent })) as { nodeId: string };

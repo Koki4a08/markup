@@ -70,7 +70,9 @@ export type ErrorCode =
   | 'TOKEN_NOT_FOUND'
   | 'INVALID_ARGUMENT'
   | 'INVALID_PARAMS'
-  | 'UNSUPPORTED';
+  | 'UNSUPPORTED'
+  /** The file is not open in the editor (or is archived, so it cannot be). */
+  | 'FILE_NOT_OPEN';
 
 export class MarkupError extends Error {
   readonly code: ErrorCode;

@@ -9,9 +9,11 @@ interface DocContextValue {
 
 const DocContext = createContext<DocContextValue | null>(null);
 
-export function DocProvider({ doc, actor, children }: { doc: MarkupDoc; actor: Actor; children: ReactNode }) {
-  const undo = useMemo(() => new ActorUndo(doc, actor), [doc, actor]);
-  useEffect(() => () => undo.destroy(), [undo]);
+/** undo, when given, is owned by the caller (e.g. kept per tab by the workspace); otherwise one is made and destroyed here. */
+export function DocProvider({ doc, actor, undo: given, children }: { doc: MarkupDoc; actor: Actor; undo?: ActorUndo; children: ReactNode }) {
+  const own = useMemo(() => (given ? null : new ActorUndo(doc, actor)), [doc, actor, given]);
+  useEffect(() => () => own?.destroy(), [own]);
+  const undo = given ?? own!;
   const value = useMemo(() => ({ doc, actor, undo }), [doc, actor, undo]);
   return <DocContext.Provider value={value}>{children}</DocContext.Provider>;
 }

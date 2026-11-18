@@ -16,7 +16,7 @@ import {
   type ResourceToolName,
   type ResponseMsg,
 } from '@markup/protocol';
-import type { Workspace } from '../workspace/Workspace';
+import { archivedFileError, type Workspace } from '../workspace/Workspace';
 import { runExportTool } from './exportTools';
 import { runFontTool } from './fontTools';
 import { runResourceTool } from './resourceTools';
@@ -107,6 +107,7 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
   /** The tab a request targets: its fileId, else the one in the foreground. */
   const route = (fileId: string | undefined): { fileId: string; doc: MarkupDoc } => {
     const target = fileId ?? workspace.activeFileId();
+    if (target && workspace.isArchived(target)) throw archivedFileError(target);
     const doc = target ? workspace.doc(target) : undefined;
     if (target && doc) return { fileId: target, doc };
     if (fileId) throw new BridgeFailure('FILE_NOT_OPEN', `File ${fileId} is not open in Markup. Call open_file with its ID first; list_resources lists files.`);

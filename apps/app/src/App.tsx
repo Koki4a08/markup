@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Actor } from '@markup/doc';
+import { ActorUndo, type Actor } from '@markup/doc';
 import { Editor } from './Editor';
 import { isMacPlatform } from './keyboard';
 import { DocProvider } from './store/DocProvider';
@@ -9,7 +9,7 @@ import { openLocalWorkspace, restoreTabs, saveTabs } from './workspace/persisten
 import type { Workspace } from './workspace/Workspace';
 import { Surfaces, useTabs, useWorkspace, WorkspaceProvider } from './workspace/WorkspaceProvider';
 
-const LOCAL_USER: Actor = { id: 'local-user', kind: 'human', name: 'You' };
+export const LOCAL_USER: Actor = { id: 'local-user', kind: 'human', name: 'You' };
 
 export function App() {
   const surfaces = useMemo(() => new Surfaces(), []);
@@ -72,13 +72,15 @@ export function Shell() {
   }, [mac, workspace]);
 
   const doc = activeId ? workspace.doc(activeId) : undefined;
+  // One undo history per open tab, kept by the workspace so it survives tab switches and the dashboard.
+  const undo = doc ? workspace.tabState(doc.fileId, 'undo', () => new ActorUndo(doc, LOCAL_USER), (u) => u.destroy()) : undefined;
   return (
     <div className="app-shell">
       <FileTabs dashboard={dashboard || !doc} onDashboard={() => setDashboard((d) => (d && doc ? false : true))} onTab={() => setDashboard(false)} shortcut={shortcut} />
       {dashboard || !doc ? (
         <Dashboard onOpened={() => setDashboard(false)} />
       ) : (
-        <DocProvider key={doc.fileId} doc={doc} actor={LOCAL_USER}>
+        <DocProvider key={doc.fileId} doc={doc} actor={LOCAL_USER} undo={undo}>
           <Editor />
         </DocProvider>
       )}
