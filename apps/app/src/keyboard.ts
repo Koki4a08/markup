@@ -22,7 +22,9 @@ export type Command =
   | 'exportSelection'
   | 'copyPng'
   | 'copyReact'
-  | 'copyTailwind';
+  | 'copyTailwind'
+  | 'pasteOnTop'
+  | 'pasteToReplace';
 
 export interface KeyLike {
   key: string;
@@ -70,6 +72,8 @@ const BINDINGS: Binding[] = [
   { code: 'KeyC', mod: true, shift: true, command: 'copyPng' },
   { code: 'KeyR', alt: true, command: 'copyReact' },
   { code: 'KeyT', alt: true, command: 'copyTailwind' },
+  { code: 'KeyV', mod: true, shift: true, command: 'pasteOnTop' },
+  { code: 'KeyR', mod: true, shift: true, command: 'pasteToReplace' },
 ];
 
 export function resolveShortcut(e: KeyLike, isMac: boolean): Command | null {

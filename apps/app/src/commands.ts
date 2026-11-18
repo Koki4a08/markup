@@ -1,6 +1,8 @@
 import type { Actor, ActorUndo, MarkupDoc, Styles } from '@markup/doc';
 import type { Command } from './keyboard';
 import type { Tool } from './canvas/tools';
+import { pasteIntoDoc, readClipboard } from './paste';
+import type { Point } from './canvas/viewport';
 import { copyAsCode, copyAsPng, exportNodes } from './export/actions';
 
 export interface CommandContext {
@@ -17,6 +19,8 @@ export interface CommandContext {
   collapseLayers(): void;
   /** Shows a short status message (copy and export results). */
   notify?(message: string): void;
+  /** Centre of the visible canvas in world coordinates; where pasted artboards land. */
+  viewportCenter?(): Point;
 }
 
 /** Selected ids that still exist and are not page roots, in document order of their parent. */
@@ -132,6 +136,16 @@ export function runCommand(command: Command, ctx: CommandContext): void {
       if (ids.length) report(ctx, 'Could not copy', () => copyAsPng(doc, ids));
       return;
     }
+    case 'pasteOnTop':
+    case 'pasteToReplace':
+      report(ctx, 'Could not paste', async () => {
+        const data = await readClipboard();
+        const mode = command === 'pasteOnTop' ? 'on-top' : 'replace';
+        const ids = await pasteIntoDoc(doc, actor, data, { selection: ctx.getSelection(), rootId: ctx.rootId, viewportCenter: ctx.viewportCenter?.() ?? { x: 0, y: 0 }, mode });
+        if (ids.length) ctx.setSelection(ids);
+        return ids.length ? '' : 'Nothing to paste.';
+      });
+      return;
     case 'copyReact':
     case 'copyTailwind': {
       const ids = selected(ctx);

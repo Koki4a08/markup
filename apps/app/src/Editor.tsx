@@ -7,7 +7,7 @@ import { anchorWorld } from './comments/anchor';
 import { CommentLayer } from './comments/CommentLayer';
 import { DEFAULT_FILTER, markSeen, type CommentFilter, type Draft } from './comments/state';
 import { TOOLS, type Tool } from './canvas/tools';
-import { fitRect, worldToScreen, type Viewport } from './canvas/viewport';
+import { fitRect, screenToWorld, worldToScreen, type Viewport } from './canvas/viewport';
 import { runCommand, type CommandContext } from './commands';
 import { isMacPlatform, resolveShortcut } from './keyboard';
 import { icons } from './panels/icons';
@@ -19,6 +19,7 @@ import { useDoc } from './store/DocProvider';
 import { usePages } from './store/hooks';
 import { CopyMenu, type CopyMenuState } from './export/CopyMenu';
 import { sanitizeText } from './canvas/NodeView';
+import { pasteIntoDoc } from './paste';
 import { useTabs, useWorkspace } from './workspace/WorkspaceProvider';
 
 export function Editor() {
@@ -105,6 +106,13 @@ function EditorShell() {
     [doc, actor],
   );
 
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const viewportCenter = useCallback(() => {
+    const box = canvasRef.current?.getBoundingClientRect();
+    return screenToWorld(viewportRef.current, { x: (box?.width ?? 0) / 2, y: (box?.height ?? 0) / 2 });
+  }, []);
+
   const ctx: CommandContext = useMemo(
     () => ({
       doc,
@@ -119,8 +127,9 @@ function EditorShell() {
       startRename: setRenamingId,
       collapseLayers: () => setCollapseSignal((n) => n + 1),
       notify: setToast,
+      viewportCenter,
     }),
-    [doc, actor, undo, rootId, selection, zoomToFit],
+    [doc, actor, undo, rootId, selection, zoomToFit, viewportCenter],
   );
 
   useEffect(() => {
@@ -155,6 +164,21 @@ function EditorShell() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [ctx]);
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTyping(e.target) || !e.clipboardData) return;
+      const data = { html: e.clipboardData.getData('text/html'), text: e.clipboardData.getData('text/plain'), files: Array.from(e.clipboardData.files) };
+      if (!data.html && !data.text && !data.files.length) return;
+      e.preventDefault();
+      pasteIntoDoc(doc, actor, data, { selection: selection.get(), rootId, viewportCenter: viewportCenter() }).then(
+        (ids) => ids.length && selection.set(ids),
+        (err: unknown) => setToast(err instanceof Error ? err.message : `Could not paste: ${String(err)}`),
+      );
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [doc, actor, selection, rootId, viewportCenter]);
 
   const placeComment = useCallback(
     (at: { nodeId: string | null; x: number; y: number }) => {
