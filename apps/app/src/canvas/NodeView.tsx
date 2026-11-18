@@ -27,7 +27,8 @@ export const NodeView = memo(function NodeView({ id }: { id: string }) {
   const common = { 'data-node-id': id, style };
   switch (node.type) {
     case 'text':
-      return <p {...common} dangerouslySetInnerHTML={{ __html: sanitizeText(node.text ?? '') }} />;
+      // Markup's dialect has no margins, so the browser's default paragraph margin must not apply either.
+      return <p {...common} style={{ margin: 0, ...style }} dangerouslySetInnerHTML={{ __html: sanitizeText(node.text ?? '') }} />;
     case 'image':
       return <img {...common} src={node.src ?? ''} alt={node.name} draggable={false} />;
     case 'svg':

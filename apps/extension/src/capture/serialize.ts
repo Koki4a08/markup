@@ -466,18 +466,28 @@ class Serializer {
   }
 
   async image(src: string, el: Element, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
-    const data = src ? await this.images.get(src) : null;
+    const data = (src ? await this.images.get(src) : null) ?? (await this.fromScreen(el));
     return data ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
   }
 
-  canvas(el: HTMLCanvasElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): string {
+  /** The pixels the user sees, cut from a screenshot of the visible tab (private, cross-origin or tainted images). */
+  async fromScreen(el: Element): Promise<string | null> {
+    if (!this.env.snapshotRegion) return null;
+    try {
+      return this.images.admit(await this.env.snapshotRegion(this.env.rect(el)));
+    } catch {
+      return null;
+    }
+  }
+
+  async canvas(el: HTMLCanvasElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
     let data: string | null = null;
     try {
       data = el.toDataURL('image/png');
     } catch {
       // Tainted by cross-origin content.
     }
-    data = this.images.admit(data);
+    data = this.images.admit(data) ?? (await this.fromScreen(el));
     return data ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
   }
 
@@ -496,6 +506,7 @@ class Serializer {
     }
     data = this.images.admit(data);
     if (!data && el.poster) data = await this.images.get(el.poster);
+    if (!data) data = await this.fromScreen(el);
     return data ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
   }
 
@@ -646,10 +657,28 @@ export async function capture(
   if (!parts.some(Boolean)) throw new Error('Nothing to capture: the selection is hidden or empty');
   const width = Math.max(0, left - TARGET_GAP);
   const height = Math.max(0, ...boxes.map((b) => b.h));
-  const root = styleAttr([['position', 'relative'], ['width', px(width)], ['height', px(height)]]);
+  const root = styleAttr([['position', 'relative'], ['width', px(width)], ['height', px(height)], ['background-color', backdrop(els[0]!, env)]]);
   const name = meta.title.trim() || hostOf(meta.url) || 'Snapshot';
   // The attribute marks the root too: Chrome's async clipboard sanitiser can drop the comment.
   return `${SNAPSHOT_MARKER}<div ${SNAPSHOT_ATTR}="v1" layer-name="${escAttr(name)}" data-source="${escAttr(meta.url)}" style="${root}">${parts.join('')}</div>`;
+}
+
+const isOpaque = (color: string) => !!color && color !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(color.replace(/\s+/g, ' '));
+
+/**
+ * The colour the target sits on in the page: its nearest ancestor with a background (the root of a whole-page
+ * capture uses the html/body background, which CSS paints on the canvas). White when nothing is opaque.
+ */
+function backdrop(target: Element, env: CaptureEnv): string {
+  const doc = target.ownerDocument;
+  const chain: Element[] = [];
+  if (target === doc.documentElement) chain.push(doc.documentElement, ...(doc.body ? [doc.body] : []));
+  else for (let a = target.parentElement; a; a = a.parentElement) chain.push(a);
+  for (const el of chain) {
+    const color = get(env.style(el), 'background-color');
+    if (isOpaque(color)) return color;
+  }
+  return 'rgb(255, 255, 255)';
 }
 
 function hostOf(url: string): string {

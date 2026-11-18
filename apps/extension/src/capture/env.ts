@@ -1,6 +1,7 @@
 // apps/app type-checks this file too (its snapshot paste test runs the real capture), so name the chrome types here.
 /// <reference types="chrome" />
 import { SAFE_IMAGE } from './images';
+import { screenRegions } from './screen';
 
 export type Pseudo = '::before' | '::after' | '::placeholder';
 
@@ -13,6 +14,8 @@ export interface CaptureEnv {
   fetchImage(url: string): Promise<string | null>;
   /** Page-coordinate bounds of a run of text and inline nodes, or null when unknown. */
   textRect?(nodes: Node[]): DOMRect | null;
+  /** A PNG data URL of what the visible tab shows inside a page-coordinate rect, or null when it is off screen. */
+  snapshotRegion?(rect: DOMRect): Promise<string | null>;
 }
 
 const MAX_RASTER_SIDE = 4096;
@@ -58,6 +61,7 @@ export function browserEnv(win: Window = window): CaptureEnv {
   const doc = win.document;
   const shift = (r: DOMRect) => new DOMRect(r.x + win.scrollX, r.y + win.scrollY, r.width, r.height);
   return {
+    snapshotRegion: screenRegions(win),
     style: (el, pseudo) => win.getComputedStyle(el, pseudo),
     rect: (el) => shift(el.getBoundingClientRect()),
     textRect(nodes) {

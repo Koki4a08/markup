@@ -24,13 +24,47 @@ beforeEach(() => {
 });
 
 describe('capture', () => {
+  it('keeps the whole font stack so system fonts still resolve', async () => {
+    document.body.innerHTML = `<p id="t" data-rect="0 0 100 20" style="font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Arial, sans-serif">Hi</p>`;
+    const html = await capture([document.getElementById('t')!], fakeEnv({}), META);
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    expect(css(holder.querySelector('p')).fontFamily).toBe("-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif");
+  });
+
+  it('root takes the background behind the target', async () => {
+    document.body.innerHTML = `<div style="background-color: rgb(13, 17, 23)" data-rect="0 0 400 200"><div id="t" data-rect="10 10 100 50"></div></div>`;
+    const html = await capture([document.getElementById('t')!], fakeEnv({}), META);
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    expect(css(holder.querySelector(':scope > div')).backgroundColor).toBe('rgb(13, 17, 23)');
+  });
+
+  it('root falls back to white when nothing behind the target is opaque', async () => {
+    document.body.innerHTML = `<div id="t" data-rect="0 0 100 50"></div>`;
+    const html = await capture([document.getElementById('t')!], fakeEnv({}), META);
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    expect(css(holder.querySelector(':scope > div')).backgroundColor).toBe('rgb(255, 255, 255)');
+  });
+
+  it('an image that cannot be fetched is cut from the visible tab', async () => {
+    document.body.innerHTML = `<img id="t" src="https://private.test/a.png" data-rect="0 0 40 30">`;
+    const regions: DOMRect[] = [];
+    const env = { ...fakeEnv({}), snapshotRegion: async (r: DOMRect) => (regions.push(r), PNG) };
+    const html = await capture([document.getElementById('t')!], env, META);
+    expect(html).toContain(`src="${PNG}"`);
+    expect(html).not.toContain('Image unavailable');
+    expect(regions[0]).toMatchObject({ x: 0, y: 0, width: 40, height: 30 });
+  });
+
   it('wraps the capture in a snapshot root', async () => {
     const { html, root } = await run('flex row');
     expect(html.startsWith('<!--markup:snapshot v1-->')).toBe(true);
     expect(root.getAttribute('layer-name')).toBe(META.title);
     expect(root.getAttribute('data-markup-snapshot')).toBe('v1');
     expect(root.getAttribute('data-source')).toBe(META.url);
-    expect(css(root)).toEqual({ position: 'relative', width: '200px', height: '50px' });
+    expect(css(root)).toEqual({ position: 'relative', width: '200px', height: '50px', backgroundColor: 'rgb(255, 255, 255)' });
   });
 
   it('flex row keeps flex and gap', async () => {
@@ -76,7 +110,7 @@ describe('capture', () => {
       width: '201px',
       color: 'rgb(17, 17, 17)',
       fontSize: '14px',
-      fontFamily: "'Inter Display'",
+      fontFamily: "'Inter Display', system-ui, sans-serif",
       lineHeight: '20px',
       textAlign: 'center',
     });

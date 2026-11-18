@@ -18,8 +18,18 @@ chrome.commands.onCommand.addListener((command, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((msg: { type?: string; url?: string }, sender, sendResponse) => {
-  if (msg?.type !== 'fetch-image' || typeof msg.url !== 'string') return false;
   if (!isTrustedSender(sender, chrome.runtime.id)) return false;
-  void fetchImage(msg.url).then(sendResponse);
-  return true;
+  if (msg?.type === 'fetch-image' && typeof msg.url === 'string') {
+    void fetchImage(msg.url).then(sendResponse);
+    return true;
+  }
+  if (msg?.type === 'capture-tab') {
+    // What the user sees, for images the proxy cannot download. activeTab covers it: the user invoked the picker here.
+    chrome.tabs.captureVisibleTab(sender.tab!.windowId, { format: 'png' }).then(
+      (dataUrl) => sendResponse({ dataUrl }),
+      (err: unknown) => sendResponse({ error: err instanceof Error ? err.message : String(err) }),
+    );
+    return true;
+  }
+  return false;
 });
