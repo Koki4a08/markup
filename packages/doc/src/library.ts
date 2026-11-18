@@ -119,10 +119,18 @@ export class MarkupLibrary {
   unarchive(ids: string[]): (LibraryItem & { parentId: string | null })[] {
     const maps = ids.map((id) => this.require(id));
     const now = Date.now();
+    const restoring = new Set<Y.Map<unknown>>();
+    for (const m of maps) {
+      restoring.add(m);
+      for (const d of this.descendants(m.get('id') as string)) restoring.add(d);
+    }
+    const restoringIds = new Set([...restoring].map((m) => m.get('id') as string));
     this.ydoc.transact(() => {
-      for (const m of maps) {
+      for (const m of restoring) {
         const parent = m.get('parentId') as string | null;
-        if (parent && this.items.get(parent)?.get('archived') === true) m.set('parentId', null);
+        if (parent && !restoringIds.has(parent) && this.items.get(parent)?.get('archived') === true) {
+          m.set('parentId', null);
+        }
         m.set('archived', false);
         m.set('updatedAt', now);
       }
