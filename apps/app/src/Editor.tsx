@@ -14,6 +14,7 @@ import { icons } from './panels/icons';
 import { RightPanel } from './panels/RightPanel';
 import { captureThumbnail, createDomTools } from './bridge/domTools';
 import { LayersPanel } from './panels/LayersPanel';
+import { McpPanel } from './panels/McpPanel';
 import { SelectionProvider, useSelection } from './selection';
 import { useDoc } from './store/DocProvider';
 import { usePages } from './store/hooks';
@@ -51,6 +52,8 @@ function EditorShell() {
   const [revealId, setRevealId] = useState<string | null>(null);
   const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
   const [toast, setToast] = useState('');
+  const [mcpOpen, setMcpOpen] = useState(false);
+  const closeMcp = useCallback(() => setMcpOpen(false), []);
   const [dragTick, setDragTick] = useState(0);
   const bumpDrag = useCallback(() => setDragTick((t) => t + 1), []);
   const fileName = useTabs().find((t) => t.fileId === doc.fileId)?.name ?? doc.name;
@@ -243,6 +246,12 @@ function EditorShell() {
         <span className={`bridge-status is-${bridgeStatus}`} title={bridgeStatus === 'connected' ? 'Agents can reach this file through markup mcp' : 'Run `markup mcp` from an agent to connect'}>
           {bridgeStatus === 'connected' ? 'Agents connected' : 'Agents offline'}
         </span>
+        <div className="mcp-anchor">
+          <button className="topbar-button" data-mcp-toggle aria-expanded={mcpOpen} onClick={() => setMcpOpen((o) => !o)}>
+            Connect an agent
+          </button>
+          {mcpOpen && <McpPanel onClose={closeMcp} />}
+        </div>
         <button className="zoom" title="Zoom to fit (⇧1)" onClick={zoomToFit}>
           {Math.round(viewport.zoom * 100)}%
         </button>

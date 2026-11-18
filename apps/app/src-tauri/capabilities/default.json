@@ -8,6 +8,21 @@
   "permissions": [
     "core:default",
     "dialog:allow-save",
-    "fs:allow-write-file"
+    "fs:allow-write-file",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/markup",
+          "sidecar": true,
+          "args": [
+            "install",
+            {
+              "validator": "^(claude-code|cursor|vscode|codex|opencode)$"
+            }
+          ]
+        }
+      ]
+    }
   ]
 }

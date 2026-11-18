@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PHASE1_TOOLS } from '@markup/protocol';
+import { ALL_TOOLS } from '@markup/protocol';
 import { BridgeError, type Hub } from '../src/hub';
 import { createServer } from '../src/server';
 
@@ -31,10 +31,10 @@ async function connect(hub: Hub) {
 }
 
 describe('mcp server', () => {
-  it('lists all phase-1 tools', async () => {
+  it('lists all tools', async () => {
     const client = await connect(fakeHub(() => ({})));
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual([...PHASE1_TOOLS].sort());
+    expect(tools.map((t) => t.name).sort()).toEqual([...ALL_TOOLS].sort());
   });
 
   it('forwards calls with the client name as agent', async () => {

@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Markup",
+  "mainBinaryName": "markup-app",
   "version": "0.1.0",
   "identifier": "org.markup.app",
   "build": {
@@ -28,6 +29,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": [
+      "binaries/markup"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -1296,3 +1296,123 @@ body {
   font: inherit;
   font-size: 11px;
 }
+
+.mcp-anchor {
+  position: relative;
+}
+
+.topbar-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.topbar-button:hover,
+.topbar-button[aria-expanded='true'] {
+  background: var(--hover);
+}
+
+.mcp-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: 420px;
+  max-height: calc(100vh - 72px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.mcp-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 0;
+}
+
+.mcp-panel-title {
+  font-weight: 600;
+}
+
+.mcp-panel-note {
+  margin: 4px 12px 8px;
+  color: var(--text-2);
+}
+
+.mcp-agents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mcp-agent {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.mcp-agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mcp-agent-name {
+  font-weight: 500;
+}
+
+.mcp-add {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--focus);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mcp-add:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.mcp-snippet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.mcp-snippet pre,
+.mcp-output {
+  margin: 0;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--bg);
+  font: 11px/1.5 var(--mono-font);
+  white-space: pre;
+}
+
+.mcp-output {
+  white-space: pre-wrap;
+  border-left: 2px solid var(--focus);
+}
+
+.mcp-output.is-error {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
