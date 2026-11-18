@@ -129,18 +129,39 @@ export async function renderExport(el: HTMLElement, setting: ExportSetting): Pro
   return { bytes: await toBytes(canvas, raster.mimeType, raster.quality), mimeType: raster.mimeType, ext: format, ...dims };
 }
 
-const nextFrame = () => new Promise<void>((r) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(() => r()) : setTimeout(r, 0)));
+/**
+ * One frame, or 50 ms when frames do not come: browsers pause requestAnimationFrame in hidden
+ * documents and WebView2 pauses it while minimised, the usual state while an agent works.
+ */
+const nextFrame = () =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 50);
+    if (typeof requestAnimationFrame === 'function' && !document.hidden)
+      requestAnimationFrame(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+  });
 
-async function settled(host: HTMLElement): Promise<void> {
+/** Waits for the mounted nodes' images and fonts, at most 5 s so an image that never loads cannot hang an export. */
+export async function settled(host: HTMLElement): Promise<void> {
   await nextFrame();
   const images = [...host.querySelectorAll('img')].filter((img) => img.getAttribute('src') && !img.complete);
-  const loaded = images.map((img) => new Promise<void>((r) => {
-    img.addEventListener('load', () => r(), { once: true });
-    img.addEventListener('error', () => r(), { once: true });
-  }));
-  const fonts = typeof document !== 'undefined' && document.fonts ? document.fonts.ready.then(() => undefined) : Promise.resolve();
-  // Never hang an export on an image that will not load.
-  await Promise.race([Promise.all([...loaded, fonts]), new Promise((r) => setTimeout(r, 5000))]);
+  const loaded = images.map(
+    (img) =>
+      new Promise<void>((r) => {
+        img.addEventListener('load', () => r(), { once: true });
+        img.addEventListener('error', () => r(), { once: true });
+      }),
+  );
+  const fonts = document.fonts ? document.fonts.ready.then(() => undefined) : Promise.resolve();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<void>((r) => (timer = setTimeout(r, 5000)));
+  try {
+    await Promise.race([Promise.all([...loaded, fonts]), cap]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The node's artboard (top-level ancestor below the page root), so the node lays out inside its real parents. */

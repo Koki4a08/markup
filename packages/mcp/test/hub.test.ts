@@ -1,7 +1,7 @@
 import net from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import type { BridgeMessage, FileInfo } from '@markup/protocol';
+import { EXPORT_TIMEOUT_MS, MAX_PAYLOAD_BYTES, REQUEST_TIMEOUT_MS, type BridgeMessage, type FileInfo } from '@markup/protocol';
 import { connectOrHost, resilientHub, startHub, type Hub } from '../src/hub';
 
 const agent = { clientId: 'agent-1', name: 'Test Agent' };
@@ -81,6 +81,50 @@ describe('hub', () => {
     await fakeEditor(port, [{ fileId: 'f1', name: 'A', active: true }], { respond: false });
     await expect(h.request({ method: 'get_basic_info', params: {}, agent })).rejects.toMatchObject({ code: 'TIMEOUT' });
   });
+
+  it('export tools get the longer export timeout, on the host and through a relay', async () => {
+    expect(EXPORT_TIMEOUT_MS).toBeGreaterThan(REQUEST_TIMEOUT_MS);
+    const port = freePort();
+    const host = await startHub(port, { timeoutMs: 50, exportTimeoutMs: 400, editorWaitMs: 0 });
+    cleanups.push(() => host.close());
+    const relay = await connectOrHost(port, { timeoutMs: 50, exportTimeoutMs: 400 });
+    cleanups.push(() => relay.close());
+    expect(relay.role).toBe('relay');
+    await fakeEditor(port, [{ fileId: 'f1', name: 'A', active: true }], { respond: false });
+    for (const h of [host, relay]) {
+      const started = Date.now();
+      let exportSettled = false;
+      const exporting = h.request({ method: 'export', params: { nodes: {} }, agent }).finally(() => (exportSettled = true));
+      const combined = h.request({ method: 'export_combined_pdf', params: { nodeIds: ['n'] }, agent });
+      await expect(h.request({ method: 'get_basic_info', params: {}, agent })).rejects.toMatchObject({ code: 'TIMEOUT' });
+      // The normal call timed out while the exports are still waiting.
+      expect(exportSettled).toBe(false);
+      await expect(exporting).rejects.toMatchObject({ code: 'TIMEOUT' });
+      await expect(combined).rejects.toMatchObject({ code: 'TIMEOUT' });
+      expect(Date.now() - started).toBeGreaterThanOrEqual(350);
+    }
+  });
+
+  it('accepts results larger than the 100 MB ws default, through a relay', async () => {
+    expect(MAX_PAYLOAD_BYTES).toBeGreaterThanOrEqual(1024 ** 3);
+    const port = freePort();
+    const first = await connectOrHost(port);
+    cleanups.push(() => first.close());
+    const second = await connectOrHost(port);
+    cleanups.push(() => second.close());
+    const big = 'A'.repeat(101 * 1024 * 1024);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`, { maxPayload: MAX_PAYLOAD_BYTES });
+    await new Promise((r) => ws.once('open', r));
+    cleanups.push(() => ws.close());
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(String(raw)) as BridgeMessage;
+      if (msg.type === 'request') ws.send(JSON.stringify({ type: 'response', id: msg.id, ok: true, result: { files: [{ data: big }] } }));
+    });
+    ws.send(JSON.stringify({ type: 'hello', role: 'editor', clientId: 'editor-big', app: 'markup', files: [{ fileId: 'f1', name: 'A', active: true }] }));
+    await new Promise((r) => setTimeout(r, 30));
+    const result = (await second.request({ method: 'export', params: { nodes: {} }, agent })) as { files: { data: string }[] };
+    expect(result.files[0]!.data.length).toBe(big.length);
+  }, 30_000);
 
   it('second process relays through first hub', async () => {
     const port = freePort();

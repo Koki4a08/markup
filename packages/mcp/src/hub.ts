@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import WebSocket, { WebSocketServer } from 'ws';
 import {
   BRIDGE_PORT,
+  EXPORT_TIMEOUT_MS,
+  MAX_PAYLOAD_BYTES,
   NO_EDITOR_MESSAGE,
   REQUEST_TIMEOUT_MS,
   type BridgeErrorCode,
@@ -31,6 +33,8 @@ export interface Hub {
 
 export interface HubOptions {
   timeoutMs?: number;
+  /** Timeout for export and export_combined_pdf, which render and encode whole files. */
+  exportTimeoutMs?: number;
   handshakeMs?: number;
   /** How long a call waits for an editor to (re)connect before NO_EDITOR. Default 3 s. */
   editorWaitMs?: number;
@@ -42,6 +46,13 @@ interface Pending {
   editor: WebSocket;
   timer: NodeJS.Timeout;
   settle: (res: ResponseMsg) => void;
+}
+
+const EXPORT_METHODS = new Set<string>(['export', 'export_combined_pdf']);
+
+/** How long a call may take: exports get their own, longer timeout. */
+function timeoutFor(method: string, opts: HubOptions): number {
+  return EXPORT_METHODS.has(method) ? (opts.exportTimeoutMs ?? EXPORT_TIMEOUT_MS) : (opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
 }
 
 const send = (ws: WebSocket, msg: BridgeMessage) => ws.send(JSON.stringify(msg));
@@ -62,7 +73,6 @@ export function isAllowedOrigin(origin: string | undefined): boolean {
 
 /** Hosts the localhost hub: editors register their open files, agents send tool requests. */
 export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub> {
-  const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const editors = new Map<WebSocket, FileInfo[]>();
   const pending = new Map<string, Pending>();
   const editorWaiters = new Set<() => void>();
@@ -95,6 +105,7 @@ export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub
     await whenEditor();
     const editor = pickEditor(msg.fileId);
     if (editor instanceof BridgeError) return settle(fail(id, editor.code, editor.message));
+    const timeoutMs = timeoutFor(msg.method, opts);
     const timer = setTimeout(() => {
       pending.delete(id);
       settle(fail(id, 'TIMEOUT', `Markup did not answer ${msg.method} within ${Math.round(timeoutMs / 1000)}s.`));
@@ -104,7 +115,7 @@ export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub
   };
 
   return new Promise((resolve, reject) => {
-    const wss = new WebSocketServer({ host: '127.0.0.1', port, verifyClient: (info: { origin?: string }) => isAllowedOrigin(info.origin) });
+    const wss = new WebSocketServer({ host: '127.0.0.1', port, maxPayload: MAX_PAYLOAD_BYTES, verifyClient: (info: { origin?: string }) => isAllowedOrigin(info.origin) });
     wss.once('error', reject);
     wss.once('listening', () => {
       wss.off('error', reject);
@@ -161,10 +172,9 @@ export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub
 
 /** Connects to a hub hosted by another `markup mcp` process; rejects if the port owner is not Markup. */
 export function connectRelay(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub> {
-  const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const foreign = new Error(`Port ${port} is in use by another program. Free it, then restart your agent.`);
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`, { maxPayload: MAX_PAYLOAD_BYTES });
     const pending = new Map<string, { timer: NodeJS.Timeout; settle: (r: ResponseMsg) => void }>();
     const handshake = setTimeout(() => {
       ws.terminate();
@@ -191,6 +201,7 @@ export function connectRelay(port = BRIDGE_PORT, opts: HubOptions = {}): Promise
             new Promise((res, rej) => {
               if (ws.readyState !== WebSocket.OPEN) return rej(new BridgeError('HUB_GONE', 'The Markup hub went away.'));
               const id = randomUUID();
+              const timeoutMs = timeoutFor(req.method, opts);
               const timer = setTimeout(() => {
                 pending.delete(id);
                 rej(new BridgeError('TIMEOUT', `Markup did not answer ${req.method} within ${Math.round(timeoutMs / 1000)}s.`));
