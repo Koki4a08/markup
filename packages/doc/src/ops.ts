@@ -257,8 +257,10 @@ function toSpec(doc: MarkupDoc, id: string): ClonedSpec {
   return spec;
 }
 
-/** Walks the new subtree in parallel with the cloned spec to map source descendant ids to new ids. */
+/** Walks the new subtree in parallel with the cloned spec to map source descendant ids to new ids; copies export settings. */
 function remap(doc: MarkupDoc, newId: string, spec: ClonedSpec, map: Record<string, string>): Record<string, string> {
+  const exportSettings = doc.yNode(spec.sourceId).get('exports');
+  if (Array.isArray(exportSettings)) doc.yNode(newId).set('exports', exportSettings);
   const newChildren = doc.requireNode(newId).children;
   spec.children.forEach((childSpec, i) => {
     const newChild = newChildren[i]!;

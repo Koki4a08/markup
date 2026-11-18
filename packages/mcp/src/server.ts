@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { RESOURCE_TOOLS, tools, type ToolName } from '@markup/protocol';
 import type { ZodRawShape } from 'zod';
+import { writeExports, type ExportedFile } from './exportsink';
 import { guide } from './guide';
 import { BridgeError, type Hub } from './hub';
 
@@ -13,6 +14,16 @@ function toResult(method: ToolName, result: unknown): CallToolResult {
   if (method === 'get_screenshot' && result && typeof result === 'object' && 'data' in result) {
     const { data, mimeType } = result as { data: string; mimeType?: string };
     return { content: [{ type: 'image', data, mimeType: mimeType ?? 'image/png' }] };
+  }
+  // The editor renders exports; this process writes them, so agents get paths on their own machine.
+  if ((method === 'export' || method === 'export_combined_pdf') && result && typeof result === 'object' && 'files' in result) {
+    const exports = writeExports(result as { files: ExportedFile[] });
+    return { content: [{ type: 'text', text: JSON.stringify({ exports }) }] };
+  }
+  if (method === 'get_fill_image' && result && typeof result === 'object') {
+    const { data, originalUrl, message } = result as { data?: string; originalUrl?: string; message?: string };
+    if (data) return { content: [{ type: 'image', data, mimeType: 'image/jpeg' }, { type: 'text', text: JSON.stringify({ originalUrl }) }] };
+    if (message) return { content: [{ type: 'text', text: message }] };
   }
   return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] };
 }
