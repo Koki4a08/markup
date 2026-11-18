@@ -77,6 +77,8 @@ describe('resource tools', () => {
     await expect(run('open_file', { fileId: `markup://file/${a}` })).resolves.toMatchObject({ fileId: a });
     workspace.close(a);
     await expect(run('open_file', { fileId: `/file/${a}` })).resolves.toMatchObject({ fileId: a });
+    workspace.close(a);
+    await expect(run('open_file', { fileId: `markup://file/${a}/node/n1` })).resolves.toMatchObject({ fileId: a });
   });
 
   it('open_file applies pageId only on the initial open, including one in the URL', async () => {

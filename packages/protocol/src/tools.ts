@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 const fileId = z.string().optional().describe('The file ID to operate on. Omit to use the file the user is viewing.');
 const pageId = z.string().optional().describe('The page ID to operate on. Omit to use the active page; prefer explicit page IDs.');
+const LINK_HINT = 'A node ID or a Markup link (markup://file/…/node/…) copied by the user.';
+const nodeRef = z.string().describe(LINK_HINT);
 const styleValue = z.union([z.string(), z.number()]);
 const styles = z.record(z.string(), styleValue);
 
@@ -21,17 +23,17 @@ export const tools = {
   get_selection: tool('Get the nodes the user has selected: IDs, names, component types, size, and the artboard each belongs to.', { fileId }),
   get_tree_summary: tool('Get a compact indented text summary of a node subtree: type, name, ID and size per node. Much cheaper than get_jsx for orientation.', {
     fileId,
-    nodeId: z.string(),
+    nodeId: nodeRef,
     depth: z.number().int().min(0).max(10).optional().describe('Maximum depth (default 3, max 10).'),
   }),
-  get_children: tool('Get the direct children of a node with IDs, names, component types, child counts and positions.', { fileId, nodeId: z.string() }),
-  get_node_info: tool('Get details for one node: size, visibility, lock state, parent, children IDs, plain text content for text nodes, and position.', {
+  get_children: tool('Get the direct children of a node with IDs, names, component types, child counts and positions.', { fileId, nodeId: nodeRef }),
+  get_node_info: tool('Get details for one node: size, visibility, lock state, parent, children IDs, plain text content for text nodes, and position. ' + LINK_HINT, {
     fileId,
-    nodeId: z.string(),
+    nodeId: nodeRef,
   }),
-  get_jsx: tool('Get the JSX of a node and its descendants, with inline styles (default) or Tailwind classes with inline fallback.', {
+  get_jsx: tool('Get the JSX of a node and its descendants, with inline styles (default) or Tailwind classes with inline fallback. ' + LINK_HINT, {
     fileId,
-    nodeId: z.string(),
+    nodeId: nodeRef,
     format: z.enum(['inline-styles', 'tailwind']).optional(),
     includeNodeIds: z.boolean().optional().describe('Add id attributes with node IDs (default true). Pass false for clean code.'),
     includeRootPositioning: z.boolean().optional().describe("Keep the root's canvas position (default false)."),
@@ -39,7 +41,7 @@ export const tools = {
   get_computed_styles: tool('Get the computed CSS styles for one or more nodes, as a map of nodeId to CSS properties.', { fileId, nodeIds: z.array(z.string()).min(1) }),
   get_screenshot: tool('Capture a PNG screenshot of a node. Scale 1 (default) for layout checks, 2 to read small text.', {
     fileId,
-    nodeId: z.string(),
+    nodeId: nodeRef,
     scale: z.number().min(0.25).max(4).optional(),
   }),
   get_font_family_info: tool(
@@ -80,7 +82,7 @@ export const tools = {
     { fileId, nodeId: z.string() },
   ),
   find_nodes: tool(
-    'Find nodes by computed style and/or text. filters are {styleName, styleValue} matchers combined with AND; both accept "*" wildcards, colors match by equivalence, and a literal color also finds token-bound usages. textValue matches text content case-insensitively, anchored, with "*" wildcards.',
+    'Find nodes by computed style and/or text. filters are {styleName, styleValue} matchers combined with AND; both accept "*" wildcards, colors match by equivalence, and a literal color also finds token-bound usages. textValue matches text content case-insensitively, anchored, with "*" wildcards. nodeId (search scope): ' + LINK_HINT,
     {
       fileId,
       filters: z.array(z.object({ styleName: z.string().optional(), styleValue: z.string().optional() })).min(1).optional(),
@@ -99,12 +101,12 @@ export const tools = {
     },
   ),
   write_html: tool(
-    'Write HTML into the design. Write incrementally: one visual group per call so the user watches progress. Rules: inline style="" only; flex, padding and gap for layout; no margin, display:inline, display:grid or HTML tables; border-box everywhere; <pre> for code. layer-name="Hero" names a layer. <x-markup-clone node-id="..." style="..."/> clones an existing node with overrides. Local images use markup-asset:///absolute/path. mode "insert-children" adds children to the target; "replace" swaps the target.',
-    { fileId, html: z.string(), targetNodeId: z.string(), mode: z.enum(['insert-children', 'replace']) },
+    'Write HTML into the design. Write incrementally: one visual group per call so the user watches progress. Rules: inline style="" only; flex, padding and gap for layout; no margin, display:inline, display:grid or HTML tables; border-box everywhere; <pre> for code. layer-name="Hero" names a layer. <x-markup-clone node-id="..." style="..."/> clones an existing node with overrides. Local images use markup-asset:///absolute/path. mode "insert-children" adds children to the target; "replace" swaps the target. targetNodeId: ' + LINK_HINT,
+    { fileId, html: z.string(), targetNodeId: nodeRef, mode: z.enum(['insert-children', 'replace']) },
   ),
   update_styles: tool(
-    'Update styles on one or more nodes in a batch. Supports design tokens as CSS variables. Setting top/left on an artboard moves it on the canvas. Styles inert in the node context are dropped and returned under ignoredStyles. An empty string or null removes a property.',
-    { fileId, updates: z.array(z.object({ nodeIds: z.array(z.string()).min(1), styles: z.record(z.string(), z.union([styleValue, z.null()])) })).min(1) },
+    'Update styles on one or more nodes in a batch. Supports design tokens as CSS variables. Setting top/left on an artboard moves it on the canvas. Styles inert in the node context are dropped and returned under ignoredStyles. An empty string or null removes a property. nodeIds: ' + LINK_HINT,
+    { fileId, updates: z.array(z.object({ nodeIds: z.array(nodeRef).min(1), styles: z.record(z.string(), z.union([styleValue, z.null()])) })).min(1) },
   ),
   set_text_content: tool(
     'Replace the inner HTML of Text nodes, keeping ID and layout. Inline formatting supported: color, font, font-size, letter-spacing, line-height, text-transform, text-decoration, -webkit-text-stroke, and gradients only with background-clip: text.',
