@@ -1,5 +1,5 @@
 import type { CaptureEnv } from './env';
-import { backgroundDecls, firstUrl, ImageLoader, PLACEHOLDER_COLOR, PLACEHOLDER_NAME, usableDataUrl } from './images';
+import { backgroundDecls, firstUrl, ImageLoader, PLACEHOLDER_COLOR, PLACEHOLDER_NAME } from './images';
 import {
   borders,
   boxDecls,
@@ -22,6 +22,19 @@ import {
 } from './styles';
 
 export const SNAPSHOT_MARKER = '<!--markup:snapshot v1-->';
+export const TOO_LARGE = 'This page is too large to snapshot — pick a smaller element.';
+
+/** Caps that keep a full-page capture from exhausting memory or the clipboard. */
+export interface CaptureLimits {
+  /** Elements serialised before giving up with TOO_LARGE. */
+  maxNodes?: number;
+  /** Total data-URL characters across all inlined images; images past it become placeholders. */
+  imageBytes?: number;
+  /** Image fetches in flight at once. */
+  concurrency?: number;
+}
+
+export const DEFAULT_LIMITS: Required<CaptureLimits> = { maxNodes: 20_000, imageBytes: 40_000_000, concurrency: 6 };
 const TARGET_GAP = 80;
 
 /** Never rendered, or rendered by their parent. */
@@ -68,9 +81,13 @@ const isElement = (n: Node): n is Element => n.nodeType === 1;
 
 class Serializer {
   readonly images: ImageLoader;
+  private nodes = 0;
 
-  constructor(readonly env: CaptureEnv) {
-    this.images = new ImageLoader(env);
+  constructor(
+    readonly env: CaptureEnv,
+    readonly limits: Required<CaptureLimits>,
+  ) {
+    this.images = new ImageLoader(env, limits);
   }
 
   /** The element's border box in page coordinates, un-rotated when it carries a rotation. */
@@ -132,6 +149,7 @@ class Serializer {
   async node(el: Element, mode: Mode): Promise<string> {
     const tag = el.localName;
     if (SKIP.has(tag) || el.hasAttribute('data-markup-snapshot')) return '';
+    if (++this.nodes > this.limits.maxNodes) throw new Error(TOO_LARGE);
     const cs = this.env.style(el);
     if (!this.visible(el, cs)) return '';
     if (get(cs, 'display') === 'contents') return (await Promise.all(this.items(el).map((i) => this.item(i, el, cs, mode, null)))).join('');
@@ -232,7 +250,7 @@ class Serializer {
       if (inner) return this.textLeaf(el, cs, box, mode, runs[0]?.run ?? [], inner);
     }
 
-    const flex = this.flexOk(cs, items, pseudos);
+    const flex = this.flexOk(el, cs, items, pseudos);
     const childMode: Mode = flex ? { flow: true } : this.origin(box, cs);
     const decls = await this.frameDecls(box, mode, cs);
     const [before, after] = pseudos;
@@ -253,9 +271,10 @@ class Serializer {
   }
 
   /** Flex layout survives when every child sits in flow with no margins, offsets, floats or reordering. */
-  flexOk(cs: CSSStyleDeclaration, items: Item[], pseudos: (PseudoInfo | null)[]): boolean {
+  flexOk(el: Element, cs: CSSStyleDeclaration, items: Item[], pseudos: (PseudoInfo | null)[]): boolean {
     if (!/^(inline-)?flex$/.test(get(cs, 'display'))) return false;
     if (pseudos.some((p) => p?.absolute)) return false;
+    if (Array.from(el.children).some((c) => this.skippedInFlow(c))) return false;
     return items.every((i) => {
       if ('run' in i) return true;
       const c = this.env.style(i.el);
@@ -268,6 +287,17 @@ class Serializer {
       const float = get(c, 'float');
       return !float || float === 'none';
     });
+  }
+
+  /** A child left out of the output that still takes space (and a gap) in its parent's flow. */
+  skippedInFlow(el: Element): boolean {
+    if (SKIP.has(el.localName) || el.hasAttribute('data-markup-snapshot')) return false;
+    const cs = this.env.style(el);
+    const display = get(cs, 'display');
+    if (display === 'none' || display === 'contents' || /^(absolute|fixed)$/.test(get(cs, 'position'))) return false;
+    if (!this.visible(el, cs)) return true;
+    const r = this.env.rect(el);
+    return (r.width <= 0 || r.height <= 0) && clips(cs);
   }
 
   // ── Text ──────────────────────────────────────────────────────────────────────────────────────────
@@ -307,8 +337,12 @@ class Serializer {
     return trimHtml(`${before}${body}${after}`);
   }
 
-  /** Where a run's text is: measured when the env can, else the parent's content box. */
-  textBox(run: Node[], cs: CSSStyleDeclaration, box: Box): Box {
+  /**
+   * Where a run's text is: measured when the env can, else the parent's content box. A loose run (text after an
+   * inline-level sibling) keeps its measured left edge; a whole-element text leaf spans the content box so its
+   * text-align still applies.
+   */
+  textBox(run: Node[], cs: CSSStyleDeclaration, box: Box, loose = false): Box {
     const content = this.content(box, cs);
     const r = this.env.textRect?.(run) ?? null;
     if (!r) {
@@ -319,7 +353,10 @@ class Serializer {
       return { x, y, w: Math.max(...rects.map((q) => q.right)) - x, h: Math.max(...rects.map((q) => q.bottom)) - y };
     }
     if (/flex|grid/.test(get(cs, 'display'))) return { x: r.x, y: r.y, w: r.width, h: r.height };
-    return { x: content.x, y: r.y, w: content.w, h: r.height };
+    if (!loose) return { x: content.x, y: r.y, w: content.w, h: r.height };
+    if (/^(center|right|end|-webkit-center|-webkit-right)$/.test(get(cs, 'text-align'))) return { x: r.x, y: r.y, w: r.width, h: r.height };
+    // A wrapping run's box already starts at the content edge, so this only narrows runs that start mid-line.
+    return { x: r.x, y: r.y, w: Math.max(r.width, content.x + content.w - r.x), h: r.height };
   }
 
   async textLeaf(el: Element, cs: CSSStyleDeclaration, box: Box, mode: Mode, run: Node[], inner: string): Promise<string> {
@@ -343,7 +380,7 @@ class Serializer {
     if (!inner.replace(/<[^>]*>/g, '').trim()) return '';
     const box = parentBox ?? this.box(parent, cs);
     const measured = this.env.textRect?.(run) ?? null;
-    const at = this.textBox(run, cs, box);
+    const at = this.textBox(run, cs, box, true);
     const decls: Decl[] = mode.flow
       ? [['flex-shrink', '0'], ...(measured ? ([['width', textWidth(at.w)]] as Decl[]) : []), ...textDecls(cs)]
       : [...this.place(at, mode), ['width', textWidth(at.w)], ...textDecls(cs)];
@@ -423,7 +460,8 @@ class Serializer {
     } catch {
       // Tainted by cross-origin content.
     }
-    return usableDataUrl(data) ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
+    data = this.images.admit(data);
+    return data ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
   }
 
   async video(el: HTMLVideoElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
@@ -439,8 +477,9 @@ class Serializer {
         data = null;
       }
     }
-    if (!usableDataUrl(data) && el.poster) data = await this.images.get(el.poster);
-    return usableDataUrl(data) ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
+    data = this.images.admit(data);
+    if (!data && el.poster) data = await this.images.get(el.poster);
+    return data ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
   }
 
   svg(el: SVGSVGElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): string {
@@ -570,10 +609,15 @@ function trimHtml(html: string): string {
  * Serialises page elements as Markup-dialect HTML: a snapshot marker, then one root frame (named after the page,
  * tagged with its URL) holding each target side by side, 80px apart.
  */
-export async function capture(targets: Element[] | 'page', env: CaptureEnv, meta: { title: string; url: string }): Promise<string> {
+export async function capture(
+  targets: Element[] | 'page',
+  env: CaptureEnv,
+  meta: { title: string; url: string },
+  limits: CaptureLimits = {},
+): Promise<string> {
   const els = targets === 'page' ? [document.documentElement] : targets;
   if (els.length === 0) throw new Error('Nothing to capture');
-  const s = new Serializer(env);
+  const s = new Serializer(env, { ...DEFAULT_LIMITS, ...limits });
   const boxes = els.map((el) => s.box(el, env.style(el)));
   let left = 0;
   const modes: Mode[] = boxes.map((b) => {

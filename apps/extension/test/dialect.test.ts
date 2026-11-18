@@ -13,7 +13,7 @@ describe('Markup dialect', () => {
       document.body.innerHTML = f.html;
       const html = await capture(
         f.targets.map((id) => document.getElementById(id)!),
-        fakeEnv(f.images),
+        fakeEnv(f.images, f.textRects),
         { title: f.name, url: 'https://example.test/' },
       );
       expect(html.startsWith(MARKER), f.name).toBe(true);
