@@ -79,6 +79,11 @@ export const icons = {
       <path d="M4 1.5h5.5L12 4v10.5H4Z" />
     </Svg>
   ),
+  close: (
+    <Svg>
+      <path d="m4 4 8 8M12 4l-8 8" />
+    </Svg>
+  ),
   plus: (
     <Svg>
       <path d="M8 3v10M3 8h10" />

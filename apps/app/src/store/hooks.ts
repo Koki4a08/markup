@@ -80,3 +80,17 @@ export function useWorking() {
   const { doc } = useDoc();
   return useDeep(doc.ydoc.getMap('working'), () => doc.working());
 }
+
+/** Snapshots of several nodes; re-reads after every document transaction. */
+export function useNodes(ids: string[]): MarkupNode[] {
+  const { doc } = useDoc();
+  const key = ids.join(',');
+  const subscribe = useCallback<Subscribe>(
+    (onChange) => {
+      doc.ydoc.on('afterTransaction', onChange);
+      return () => doc.ydoc.off('afterTransaction', onChange);
+    },
+    [doc],
+  );
+  return useStableSnapshot(subscribe, () => (key ? key.split(',') : []).map((id) => doc.getNode(id)).filter((n): n is MarkupNode => !!n));
+}
