@@ -12,7 +12,8 @@ Markup is a design canvas whose layers are real HTML/CSS. You read and write the
 7. Review with get_screenshot after meaningful changes. When content clips, set height: "fit-content" with update_styles instead of guessing a height.
 8. Repeated rows need fixed-width slots for icons and trailing actions (flexShrink: 0); gap alone does not align columns.
 9. When done, ALWAYS call finish_working_on_nodes so your working indicator clears.
-10. Every change you make is logged under your name and the user can revert it. Never show raw node IDs to the user.`,
+10. Every change you make is logged under your name and the user can revert it. Never show raw node IDs to the user.
+11. When the user pastes a markup:// link, pass it as the nodeId; it identifies the file and the layer.`,
   'mobile-status-bar': `Paste-ready iOS-style status bar for a 390px wide artboard (write_html, insert as the first child):
 
 <div layer-name="Status Bar" style="display:flex;justify-content:space-between;align-items:center;width:100%;height:54px;padding:0 24px 0 32px;flex-shrink:0">

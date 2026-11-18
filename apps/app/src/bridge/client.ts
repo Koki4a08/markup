@@ -5,6 +5,7 @@ import {
   EXPORT_TOOLS,
   FONT_TOOLS,
   RESOURCE_TOOLS,
+  parseMarkupLink,
   type BridgeErrorCode,
   type BridgeMessage,
   type DocToolName,
@@ -59,6 +60,44 @@ const isExportTool = (method: string): method is ExportToolName => (EXPORT_TOOLS
 const isDomTool = (method: string): method is DomToolName => (DOM_TOOLS as readonly string[]).includes(method);
 
 const WRITE_TOOLS = new Set(['create_artboard', 'write_html', 'update_styles', 'set_text_content', 'duplicate_nodes', 'move_nodes', 'delete_nodes', 'rename_nodes']);
+
+type Params = Record<string, unknown>;
+
+/**
+ * Replaces markup:// links the user copied (Copy link) with the ids they name, and reports the file the first
+ * node link points at, so a request without a fileId runs against that file.
+ */
+export function resolveLinks(method: string, params: Params): { params: Params; fileId?: string } {
+  let fileId: string | undefined;
+  const node = (v: unknown): unknown => {
+    const link = typeof v === 'string' ? parseMarkupLink(v) : null;
+    if (!link?.nodeId) return v;
+    fileId ??= link.fileId;
+    return link.nodeId;
+  };
+  const file = (v: unknown): unknown => (typeof v === 'string' ? (parseMarkupLink(v)?.fileId ?? v) : v);
+  const nodes = (v: unknown) => (Array.isArray(v) ? v.map(node) : v);
+  const each = (v: unknown, fix: (item: Params) => Params) => (Array.isArray(v) ? v.map((item) => (item && typeof item === 'object' ? fix(item as Params) : item)) : v);
+  const fields = (item: Params, keys: string[]) => {
+    const out = { ...item };
+    for (const k of keys) if (k in out) out[k] = node(out[k]);
+    return out;
+  };
+
+  const out: Params = fields(params, ['nodeId', 'targetNodeId', 'parentId']);
+  if ('nodeIds' in out) out.nodeIds = nodes(out.nodeIds);
+  if (Array.isArray(out.resourceIds)) out.resourceIds = out.resourceIds.map(file);
+  if (method === 'export' && out.nodes && typeof out.nodes === 'object' && !Array.isArray(out.nodes)) {
+    out.nodes = Object.fromEntries(Object.entries(out.nodes as Params).map(([k, v]) => [node(k) as string, v]));
+  }
+  if (method === 'move_nodes') out.moves = each(out.moves, (m) => fields(m, ['nodeId', 'before', 'after', 'parentId']));
+  if (method === 'duplicate_nodes') out.nodes = each(out.nodes, (n) => fields(n, ['id', 'parentId']));
+  if (method === 'update_styles') out.updates = each(out.updates, (u) => ({ ...u, nodeIds: nodes(u.nodeIds) }));
+  if (method === 'set_text_content' || method === 'rename_nodes') out.updates = each(out.updates, (u) => fields(u, ['nodeId']));
+  // open_file reads page links itself; routed tools take the plain file id.
+  if (typeof out.fileId === 'string' && method !== 'open_file') out.fileId = file(out.fileId);
+  return { params: out, fileId };
+}
 
 /** Artboards an agent call touches, so their working indicator turns on. */
 function touchedArtboards(doc: MarkupDoc, method: string, params: Record<string, unknown>, result: unknown): string[] {
@@ -117,14 +156,16 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
   const handle = async (msg: RequestMsg): Promise<ResponseMsg> => {
     try {
       const actor = actorFor(msg.agent);
-      const params = (msg.params ?? {}) as Record<string, unknown>;
+      const resolved = resolveLinks(msg.method, (msg.params ?? {}) as Params);
+      const params = resolved.params;
+      const routedFileId = msg.fileId ? (parseMarkupLink(msg.fileId)?.fileId ?? msg.fileId) : ((params.fileId as string | undefined) ?? resolved.fileId);
       let result: unknown;
       if (isResourceTool(msg.method)) {
         result = await runResourceTool(workspace, msg.method, params, { actor });
       } else if (isFontTool(msg.method)) {
         result = await runFontTool(params);
       } else {
-        const { fileId, doc } = route(msg.fileId);
+        const { fileId, doc } = route(routedFileId);
         if (isDomTool(msg.method)) {
           const tool = opts.domTools?.(fileId)?.[msg.method];
           if (!tool) throw new MarkupError('INVALID_ARGUMENT', `${msg.method} needs the file on screen. Call open_file with ${fileId} to bring its tab to the foreground, then retry.`);

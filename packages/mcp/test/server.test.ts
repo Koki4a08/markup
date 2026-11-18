@@ -53,6 +53,18 @@ describe('mcp server', () => {
     expect(hub.calls.map((c) => c.fileId)).toEqual([undefined, 'f2']);
   });
 
+  it('derives the routed fileId from a markup:// link in nodeId', async () => {
+    const hub = fakeHub(() => ({}));
+    const client = await connect(hub);
+    await client.callTool({ name: 'get_node_info', arguments: { nodeId: 'markup://file/f9/node/n1' } });
+    await client.callTool({ name: 'write_html', arguments: { html: '<div/>', targetNodeId: 'markup://file/f8/node/n2', mode: 'insert-children' } });
+    await client.callTool({ name: 'get_computed_styles', arguments: { nodeIds: ['markup://file/f7/node/n3'] } });
+    await client.callTool({ name: 'get_node_info', arguments: { fileId: 'f1', nodeId: 'markup://file/f9/node/n1' } });
+    await client.callTool({ name: 'get_node_info', arguments: { nodeId: 'n1' } });
+    await client.callTool({ name: 'get_basic_info', arguments: { fileId: 'markup://file/f6' } });
+    expect(hub.calls.map((c) => c.fileId)).toEqual(['f9', 'f8', 'f7', 'f1', undefined, 'f6']);
+  });
+
   it('string results are returned as plain text', async () => {
     const client = await connect(fakeHub(() => '<div />'));
     const res = await client.callTool({ name: 'get_jsx', arguments: { nodeId: 'n' } });

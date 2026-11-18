@@ -1,5 +1,5 @@
 import { MarkupError, runDocTool, type Actor, type LibraryItem } from '@markup/doc';
-import { tools, type ResourceToolName, type ToolParams } from '@markup/protocol';
+import { parseMarkupLink, tools, type ResourceToolName, type ToolParams } from '@markup/protocol';
 import { fileUrl, type Workspace } from '../workspace/Workspace';
 
 const DEFAULT_LIMIT = 50;
@@ -32,6 +32,9 @@ function present(item: LibraryItem, tab?: { active: boolean }) {
 
 /** Accepts a bare id, /file/<id>[/<pageId>], or markup://file/<id>[/<pageId>]. */
 export function parseFileRef(ref: string): { fileId: string; pageId?: string } {
+  // A copied node or page link (markup://file/<id>/node/<n>, …/page/<p>) opens its file, and its page.
+  const link = parseMarkupLink(ref);
+  if (link && (link.nodeId || link.pageId)) return link.pageId ? { fileId: link.fileId, pageId: link.pageId } : { fileId: link.fileId };
   const m = /^(?:markup:\/\/file\/|\/?file\/)([^/?#]+)(?:\/([^/?#]+))?/.exec(ref.trim());
   if (!m) return { fileId: ref.trim() };
   return m[2] ? { fileId: decodeURIComponent(m[1]!), pageId: decodeURIComponent(m[2]) } : { fileId: decodeURIComponent(m[1]!) };

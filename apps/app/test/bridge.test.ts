@@ -73,6 +73,34 @@ describe('bridge client', () => {
     expect(doc.working()[nodeId]).toMatchObject({ id: 'agent:c1' });
   });
 
+  it('resolves markup:// node links to the node and routes by the link file', async () => {
+    const { hub, bridge, addFile, doc, workspace } = await setup();
+    const pricing = addFile('Pricing');
+    await hub.request({ method: 'open_file', params: { fileId: pricing }, agent });
+    const page = doc.pages()[0]!;
+    if (page.type !== 'page') throw new Error('unreachable');
+    const [card] = doc.insertNodes({ id: 'u', kind: 'human', name: 'U' }, page.rootId, [{ type: 'frame', name: 'Card', styles: { width: '10px', height: '10px' } }]);
+    const link = `markup://file/${doc.fileId}/node/${card}`;
+    // Pricing is in front; the link still reaches Landing.
+    const info = await bridge.handle({ type: 'request', id: 'r1', method: 'get_node_info', params: { nodeId: link }, agent });
+    expect(info).toMatchObject({ ok: true, result: { id: card, name: 'Card' } });
+    // Through the hub, with the fileId the MCP server derives.
+    await expect(hub.request({ fileId: doc.fileId, method: 'get_node_info', params: { nodeId: link }, agent })).resolves.toMatchObject({ id: card });
+    const styled = await bridge.handle({ type: 'request', id: 'r2', method: 'update_styles', params: { updates: [{ nodeIds: [link], styles: { opacity: 0.5 } }] }, agent });
+    expect(styled).toMatchObject({ ok: true });
+    expect(doc.requireNode(card!).styles.opacity).toBe(0.5);
+    const moved = await bridge.handle({ type: 'request', id: 'r3', method: 'move_nodes', params: { moves: [{ nodeId: link, parentId: `markup://file/${doc.fileId}/node/${page.rootId}` }] }, agent });
+    expect(moved).toMatchObject({ ok: true });
+    expect(workspace.doc(pricing)).toBeDefined();
+  });
+
+  it('a node link to a file that is not open gives FILE_NOT_OPEN', async () => {
+    const { bridge, addFile } = await setup();
+    const closed = addFile('Closed');
+    const res = await bridge.handle({ type: 'request', id: 'r1', method: 'get_node_info', params: { nodeId: `markup://file/${closed}/node/n1` }, agent });
+    expect(res).toMatchObject({ ok: false, error: { code: 'FILE_NOT_OPEN', message: expect.stringContaining('open_file') } });
+  });
+
   it('doc errors come back with their code', async () => {
     const { hub } = await setup();
     await expect(hub.request({ method: 'get_node_info', params: { nodeId: 'nope' }, agent })).rejects.toMatchObject({ code: 'NODE_NOT_FOUND' });

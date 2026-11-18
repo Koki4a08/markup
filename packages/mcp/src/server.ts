@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { RESOURCE_TOOLS, tools, type ToolName } from '@markup/protocol';
+import { RESOURCE_TOOLS, parseMarkupLink, tools, type ToolName } from '@markup/protocol';
 import type { ZodRawShape } from 'zod';
 import { writeExports, type ExportedFile } from './exportsink';
 import { guide } from './guide';
@@ -29,6 +29,16 @@ function toResult(method: ToolName, result: unknown): CallToolResult {
   return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] };
 }
 
+/** The file a markup:// link in nodeId, targetNodeId or nodeIds[0] names, so the hub picks that file's editor. */
+function linkedFileId(args: Record<string, unknown>): string | undefined {
+  const first = Array.isArray(args.nodeIds) ? args.nodeIds[0] : undefined;
+  for (const value of [args.nodeId, args.targetNodeId, first]) {
+    const link = typeof value === 'string' ? parseMarkupLink(value) : null;
+    if (link) return link.fileId;
+  }
+  return undefined;
+}
+
 /** MCP server exposing Markup's tools; every call except get_guide is forwarded to the editor through the hub. */
 export function createServer(hub: Hub, clientId: string = randomUUID()): McpServer {
   const server = new McpServer({ name: 'markup', version: '0.0.0' }, { instructions: SERVER_INSTRUCTIONS });
@@ -46,7 +56,7 @@ export function createServer(hub: Hub, clientId: string = randomUUID()): McpServ
       try {
         // Resource tools act on the workspace; open_file's fileId names the file to open, not a route.
         const routed = !(RESOURCE_TOOLS as readonly string[]).includes(name);
-        const fileId = routed && typeof args.fileId === 'string' ? args.fileId : undefined;
+        const fileId = !routed ? undefined : typeof args.fileId === 'string' ? (parseMarkupLink(args.fileId)?.fileId ?? args.fileId) : linkedFileId(args);
         const result = await hub.request({ fileId, method: name, params: args, agent: { clientId, name: agentName() } });
         return toResult(name, result);
       } catch (err) {
