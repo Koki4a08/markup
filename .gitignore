@@ -3,6 +3,6 @@ dist
 target
 .superpowers
 .impeccable/mocks
-*.lo
+*.log
 .impeccable
 PRODUCT.md
