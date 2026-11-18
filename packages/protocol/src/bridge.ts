@@ -24,7 +24,9 @@ export type BridgeErrorCode =
   | 'INVALID_ORDER'
   | 'TOKEN_NOT_FOUND'
   | 'INVALID_ARGUMENT'
-  | 'INTERNAL';
+  | 'INTERNAL'
+  /** Internal to `markup mcp`: this relay lost its connection to the hosting process. */
+  | 'HUB_GONE';
 
 export interface RequestMsg {
   type: 'request';

@@ -67,7 +67,34 @@ describe('toJsx', () => {
     doc.writeHtml(agent, artboard, '<img src="markup-asset:///a.png"><svg viewBox="0 0 1 1"><path d="M0 0"></path></svg>', 'insert-children');
     const jsx = toJsx(doc, artboard, { includeNodeIds: false });
     expect(jsx).toContain('<img src="markup-asset:///a.png" />');
-    expect(jsx).toContain('<svg viewBox="0 0 1 1"><path d="M0 0"></path></svg>');
+    expect(jsx).toContain('<svg viewBox="0 0 1 1"><path d="M0 0" /></svg>');
+  });
+});
+
+describe('valid JSX output', () => {
+  it('escapes braces and angle brackets and self-closes void tags in text', () => {
+    const { doc, artboard } = setup();
+    doc.writeHtml(agent, artboard, '<p>a {b} c<br>d &lt; e</p>', 'insert-children');
+    expect(toJsx(doc, artboard, { includeNodeIds: false })).toContain('<p>a {"{"}b{"}"} c<br />d {"<"} e</p>');
+  });
+
+  it('converts inline style strings inside text to style objects', () => {
+    const { doc, artboard } = setup();
+    doc.writeHtml(agent, artboard, '<p>Hi <span style="color: red; font-weight: 700">there</span></p>', 'insert-children');
+    expect(toJsx(doc, artboard, { includeNodeIds: false })).toContain('<span style={{ color: "red", fontWeight: "700" }}>there</span>');
+  });
+
+  it('camelCases svg attributes and class', () => {
+    const { doc, artboard } = setup();
+    doc.writeHtml(agent, artboard, '<svg viewBox="0 0 2 2" class="icon"><path stroke-width="1.5" fill-rule="evenodd" d="M0 0"></path></svg>', 'insert-children');
+    const jsx = toJsx(doc, artboard, { includeNodeIds: false });
+    expect(jsx).toContain('<svg viewBox="0 0 2 2" className="icon"><path strokeWidth="1.5" fillRule="evenodd" d="M0 0" /></svg>');
+  });
+
+  it('escapes quotes in attribute values', () => {
+    const { doc, artboard } = setup();
+    doc.insertNodes(agent, artboard, [{ type: 'image', src: 'a"b.png' }]);
+    expect(toJsx(doc, artboard, { includeNodeIds: false })).toContain('<img src={"a\\"b.png"} />');
   });
 });
 

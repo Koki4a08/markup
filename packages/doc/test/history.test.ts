@@ -97,4 +97,31 @@ describe('history', () => {
     Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(doc.ydoc));
     expect(new MarkupDoc({ ydoc }).log()).toEqual(doc.log());
   });
+
+  it('reverting an overwritten entry never undoes a different entry', () => {
+    const { doc, artboard } = setup();
+    doc.updateStyles(agent, [{ nodeIds: [artboard], styles: { backgroundColor: 'red' } }]);
+    doc.updateStyles(human, [{ nodeIds: [artboard], styles: { backgroundColor: 'blue' } }]);
+    doc.updateStyles(human, [{ nodeIds: [artboard], styles: { width: '100px' } }]);
+    doc.revertEntry(human, 2);
+    expect(doc.requireNode(artboard).styles).toMatchObject({ backgroundColor: 'blue', width: '100px' });
+    expect(doc.log().find((e) => e.seq === 4)!.reverted).toBe(false);
+    expect(doc.log().find((e) => e.seq === 2)!.reverted).toBe(true);
+  });
+
+  it('reverting an insert whose node was deleted keeps later edits', () => {
+    const { doc, artboard } = setup();
+    const [card] = doc.insertNodes(agent, artboard, [{ type: 'frame', name: 'Card' }]);
+    doc.deleteNodes(human, [card!]);
+    doc.renameNodes(human, [{ nodeId: artboard, name: 'Renamed' }]);
+    doc.revertEntry(human, 2);
+    expect(doc.requireNode(artboard).name).toBe('Renamed');
+  });
+
+  it('an entry that changed nothing reverts without error', () => {
+    const { doc, artboard } = setup();
+    doc.updateStyles(agent, [{ nodeIds: [artboard], styles: { margin: '4px' } }]);
+    expect(() => doc.revertEntry(human, 2)).not.toThrow();
+    expect(doc.log()[1]!.reverted).toBe(true);
+  });
 });

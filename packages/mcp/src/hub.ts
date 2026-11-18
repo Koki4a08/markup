@@ -32,7 +32,11 @@ export interface Hub {
 export interface HubOptions {
   timeoutMs?: number;
   handshakeMs?: number;
+  /** How long a call waits for an editor to (re)connect before NO_EDITOR. Default 3 s. */
+  editorWaitMs?: number;
 }
+
+const EDITOR_WAIT_MS = 3000;
 
 interface Pending {
   editor: WebSocket;
@@ -43,11 +47,39 @@ interface Pending {
 const send = (ws: WebSocket, msg: BridgeMessage) => ws.send(JSON.stringify(msg));
 const fail = (id: string, code: BridgeErrorCode, message: string): ResponseMsg => ({ type: 'response', id, ok: false, error: { code, message } });
 
+/**
+ * Browsers can open ws://127.0.0.1 from any page, so the hub only accepts connections that
+ * carry no Origin (local processes such as other `markup mcp` relays) or come from the Markup
+ * editor itself: the Tauri webview or a local dev server. Extra origins: MARKUP_ALLOWED_ORIGINS.
+ */
+export function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (origin === 'tauri://localhost' || origin === 'http://tauri.localhost' || origin === 'https://tauri.localhost') return true;
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  const extra = (process.env.MARKUP_ALLOWED_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
+  return extra.includes(origin);
+}
+
 /** Hosts the localhost hub: editors register their open files, agents send tool requests. */
 export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub> {
   const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const editors = new Map<WebSocket, FileInfo[]>();
   const pending = new Map<string, Pending>();
+  const editorWaiters = new Set<() => void>();
+  const editorWaitMs = opts.editorWaitMs ?? EDITOR_WAIT_MS;
+
+  /** Resolves once an editor is registered, or after editorWaitMs. */
+  const whenEditor = () =>
+    new Promise<void>((resolve) => {
+      if (editors.size > 0 || editorWaitMs <= 0) return resolve();
+      const done = () => {
+        clearTimeout(timer);
+        editorWaiters.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, editorWaitMs);
+      editorWaiters.add(done);
+    });
 
   const pickEditor = (fileId: string | undefined): WebSocket | BridgeError => {
     if (editors.size === 0) return new BridgeError('NO_EDITOR', NO_EDITOR_MESSAGE);
@@ -58,8 +90,9 @@ export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub
     return editors.keys().next().value!;
   };
 
-  const dispatch = (msg: HubRequest, settle: (res: ResponseMsg) => void) => {
+  const dispatch = async (msg: HubRequest, settle: (res: ResponseMsg) => void) => {
     const id = randomUUID();
+    await whenEditor();
     const editor = pickEditor(msg.fileId);
     if (editor instanceof BridgeError) return settle(fail(id, editor.code, editor.message));
     const timer = setTimeout(() => {
@@ -71,7 +104,7 @@ export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub
   };
 
   return new Promise((resolve, reject) => {
-    const wss = new WebSocketServer({ host: '127.0.0.1', port });
+    const wss = new WebSocketServer({ host: '127.0.0.1', port, verifyClient: (info: { origin?: string }) => isAllowedOrigin(info.origin) });
     wss.once('error', reject);
     wss.once('listening', () => {
       wss.off('error', reject);
@@ -96,7 +129,10 @@ export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub
         } catch {
           return;
         }
-        if (msg.type === 'hello' && msg.role === 'editor') editors.set(ws, msg.files ?? []);
+        if (msg.type === 'hello' && msg.role === 'editor') {
+          editors.set(ws, msg.files ?? []);
+          for (const wake of [...editorWaiters]) wake();
+        }
         else if (msg.type === 'files' && editors.has(ws)) editors.set(ws, msg.files);
         else if (msg.type === 'request') {
           // A relayed request from another `markup mcp` process: answer it under its own id.
@@ -134,7 +170,8 @@ export function connectRelay(port = BRIDGE_PORT, opts: HubOptions = {}): Promise
       ws.terminate();
       reject(foreign);
     }, opts.handshakeMs ?? 2000);
-    ws.once('error', () => {
+    ws.on('error', () => {
+      // Before the handshake this means the port owner is not a Markup hub; after it, 'close' follows.
       clearTimeout(handshake);
       reject(foreign);
     });
@@ -152,7 +189,7 @@ export function connectRelay(port = BRIDGE_PORT, opts: HubOptions = {}): Promise
           role: 'relay',
           request: (req) =>
             new Promise((res, rej) => {
-              if (ws.readyState !== WebSocket.OPEN) return rej(new BridgeError('NO_EDITOR', NO_EDITOR_MESSAGE));
+              if (ws.readyState !== WebSocket.OPEN) return rej(new BridgeError('HUB_GONE', 'The Markup hub went away.'));
               const id = randomUUID();
               const timer = setTimeout(() => {
                 pending.delete(id);
@@ -177,7 +214,7 @@ export function connectRelay(port = BRIDGE_PORT, opts: HubOptions = {}): Promise
     ws.on('close', () => {
       for (const [id, p] of pending) {
         clearTimeout(p.timer);
-        p.settle(fail(id, 'EDITOR_DISCONNECTED', 'The Markup hub went away. Retry; the next call reconnects.'));
+        p.settle(fail(id, 'HUB_GONE', 'The Markup hub went away. Retry; the next call reconnects.'));
       }
       pending.clear();
     });
@@ -195,20 +232,21 @@ export async function connectOrHost(port = BRIDGE_PORT, opts: HubOptions = {}): 
 }
 
 /** A hub that re-establishes itself (host or relay) when the current one is gone. */
-export function resilientHub(port = BRIDGE_PORT, opts: HubOptions = {}): Hub {
-  let current: Promise<Hub> | null = null;
+export function resilientHub(port = BRIDGE_PORT, opts: HubOptions = {}, initial?: Hub): Hub {
+  let current: Promise<Hub> | null = initial ? Promise.resolve(initial) : null;
   const get = () => (current ??= connectOrHost(port, opts).catch((e) => ((current = null), Promise.reject(e))));
   return {
-    get role() {
-      return 'host' as const;
-    },
+    role: 'host',
     async request(msg) {
       const hub = await get();
       try {
         return await hub.request(msg);
       } catch (e) {
-        if (e instanceof BridgeError && e.code === 'EDITOR_DISCONNECTED' && hub.role === 'relay') {
+        // Retry only when this relay lost its link to the hosting process. A forwarded
+        // EDITOR_DISCONNECTED may already have been applied, so it is never resent.
+        if (e instanceof BridgeError && e.code === 'HUB_GONE') {
           current = null;
+          await hub.close();
           return (await get()).request(msg);
         }
         throw e;

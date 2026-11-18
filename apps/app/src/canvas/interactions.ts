@@ -1,6 +1,6 @@
-import type { MarkupDoc } from '@markup/doc';
+import type { MarkupDoc, MarkupNode, Styles } from '@markup/doc';
+import { parsePxValue, type Rect } from './geometry';
 import type { Point } from './viewport';
-import type { Rect } from './geometry';
 
 const contains = (r: Rect, p: Point) => p.x >= r.x && p.y >= r.y && p.x <= r.x + r.width && p.y <= r.y + r.height;
 
@@ -73,4 +73,20 @@ export function resizeRect(r: Rect, handle: Handle, dx: number, dy: number): Rec
     height = 1;
   }
   return { x, y, width, height };
+}
+
+
+/**
+ * Styles that move a node freely by delta inside a non-flex parent (or the page root).
+ * A static child is lifted to absolute at its measured position, and a static parent frame
+ * becomes its containing block so left/top are relative to it.
+ */
+export function freeformMove(node: MarkupNode, parent: MarkupNode, nodeRect: Rect, parentRect: Rect | null, delta: Point): { node: Styles; parent?: Styles } {
+  const round = Math.round;
+  const parentFix = parent.type !== 'root' && parent.styles.position === undefined ? { parent: { position: 'relative' } as Styles } : {};
+  if (parent.type === 'root' || node.styles.position === 'absolute') {
+    return { node: { left: round(parsePxValue(node.styles.left) + delta.x), top: round(parsePxValue(node.styles.top) + delta.y) }, ...(parent.type === 'root' ? {} : parentFix) };
+  }
+  const origin = parentRect ?? { x: 0, y: 0 };
+  return { node: { position: 'absolute', left: round(nodeRect.x - origin.x + delta.x), top: round(nodeRect.y - origin.y + delta.y) }, ...parentFix };
 }
