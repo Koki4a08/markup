@@ -3,3 +3,5 @@ export { MarkupDoc } from './document';
 export { normalizeStyles, parseStyleAttr, camelCase } from './styles';
 export { parseHtml } from './html-import';
 export type { Move, MoveResult, DuplicateResult, StyleUpdate } from './ops';
+export { toJsx, toTailwindClasses, type JsxOptions } from './jsx-export';
+export { treeSummary, findNodes, parseColor, plainText, type FindQuery, type FindResult } from './query';
