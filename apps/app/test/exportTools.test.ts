@@ -24,6 +24,7 @@ const avifEncode = vi.fn(async (image: { width: number; height: number }) => new
 vi.mock('@jsquash/avif/encode.js', () => ({ default: avifEncode }));
 
 const { runExportTool } = await import('../src/bridge/exportTools');
+const { settled } = await import('../src/export/render');
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
 const restore: (() => void)[] = [];
@@ -82,6 +83,21 @@ describe('export tools', () => {
     const res = (await runExportTool(doc, 'export', { nodes: { [card]: [{ format: 'avif', scale: '1x' }] } }, { activePageId: pageId })) as Files;
     expect(res.files[0]).toMatchObject({ format: 'avif', mimeType: 'image/avif', width: 200, height: 100 });
     expect(decode(res.files[0]!.data)).toBe('avif:200x100');
+  });
+
+  it('settles when requestAnimationFrame never fires (hidden or minimised window)', async () => {
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
+    try {
+      const host = document.createElement('div');
+      const started = Date.now();
+      await settled(host);
+      expect(Date.now() - started).toBeLessThan(1000);
+      // An export still completes while frames are paused.
+      const { doc, pageId, card } = setup();
+      await expect(runExportTool(doc, 'export', { nodes: { [card]: [] } }, { activePageId: pageId })).resolves.toMatchObject({ files: [{ nodeId: card }] });
+    } finally {
+      raf.mockRestore();
+    }
   });
 
   it('svg export rejects frames', async () => {

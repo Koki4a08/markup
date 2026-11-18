@@ -3,6 +3,10 @@ import type { ToolName } from './tools';
 /** Localhost port of the hub that connects `markup mcp` processes to editor windows. */
 export const BRIDGE_PORT = 29980;
 export const REQUEST_TIMEOUT_MS = 30_000;
+/** export and export_combined_pdf render and encode large images; they get longer than other calls. */
+export const EXPORT_TIMEOUT_MS = 300_000;
+/** Largest bridge message; export results carry whole files as base64 (ws defaults to 100 MB). */
+export const MAX_PAYLOAD_BYTES = 1024 ** 3;
 
 export interface FileInfo {
   fileId: string;
