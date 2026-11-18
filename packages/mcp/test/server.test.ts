@@ -1,5 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PHASE1_TOOLS } from '@markup/protocol';
 import { BridgeError, type Hub } from '../src/hub';
@@ -60,6 +63,36 @@ describe('mcp server', () => {
     const client = await connect(fakeHub(() => ({ data: 'iVBORw0KGgo=', mimeType: 'image/png', width: 10, height: 10 })));
     const res = await client.callTool({ name: 'get_screenshot', arguments: { nodeId: 'n' } });
     expect(res.content).toEqual([{ type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' }]);
+  });
+
+  it('export results are written to disk and answered with paths', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'markup-export-'));
+    process.env.MARKUP_EXPORT_DIR = dir;
+    try {
+      const data = Buffer.from('png-bytes').toString('base64');
+      const client = await connect(fakeHub(() => ({ files: [{ nodeId: 'n', name: 'Hero', format: 'png', scale: '2x', mimeType: 'image/png', data }] })));
+      for (const name of ['export', 'export_combined_pdf']) {
+        const args = name === 'export' ? { nodes: { n: [] } } : { nodeIds: ['n'] };
+        const res = await client.callTool({ name, arguments: args });
+        const parsed = JSON.parse((res.content as { text: string }[])[0]!.text) as { exports: { nodeId: string; path: string }[] };
+        expect(parsed.exports[0]!.nodeId).toBe('n');
+        expect(readFileSync(parsed.exports[0]!.path, 'utf8')).toBe('png-bytes');
+      }
+    } finally {
+      delete process.env.MARKUP_EXPORT_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('fill images are returned as an image block with the original url', async () => {
+    const client = await connect(fakeHub(() => ({ data: '/9j/4AAQ', mimeType: 'image/jpeg', originalUrl: 'https://x/y.png' })));
+    const res = await client.callTool({ name: 'get_fill_image', arguments: { nodeId: 'n' } });
+    expect(res.content).toEqual([
+      { type: 'image', data: '/9j/4AAQ', mimeType: 'image/jpeg' },
+      { type: 'text', text: JSON.stringify({ originalUrl: 'https://x/y.png' }) },
+    ]);
+    const none = await connect(fakeHub(() => ({ message: 'No image fill.' })));
+    expect((await none.callTool({ name: 'get_fill_image', arguments: { nodeId: 'n' } })).content).toEqual([{ type: 'text', text: 'No image fill.' }]);
   });
 
   it('tool error surfaces as isError', async () => {

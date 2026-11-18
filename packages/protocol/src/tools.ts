@@ -46,6 +46,39 @@ export const tools = {
     "Get information about whether a font family is available in a file and all weights and styles in the family. This tool looks up fonts on the user's machine and Google Fonts. Each family lists groups of styles that share the same italicization, width, and variable axes.",
     { fileId, familyNames: z.array(z.string()).describe('Font family names to look up, e.g. ["Inter", "Roboto"].') },
   ),
+  export: tool(
+    "Export nodes as image or video files. Unless the user specifies, do not override the default export settings. Returns each export's file path.",
+    {
+      fileId,
+      pageId: z.string().optional().describe('The page ID to export from when nodes is "nodes-with-exports-only". Omit to use the page the user is viewing.'),
+      type: z.enum(['image', 'video']).optional().describe('The kind of export. Defaults to image.'),
+      nodes: z.union([
+        z.literal('nodes-with-exports-only').describe('Exports all nodes on the target page that already have export settings. Uses pageId when provided, otherwise the page the user is viewing.'),
+        z
+          .record(
+            z.string(),
+            z.array(
+              z.object({
+                format: z.enum(['avif', 'jpg', 'mp4', 'pdf', 'png', 'svg', 'webm', 'webp']),
+                scale: z.string().regex(/^\d+(\.\d+)?(x|w|h|p)$/).describe('A multiplier like "2x", or a target size: "720p" (shortest side), "512w" (width) or "512h" (height).'),
+                durationSeconds: z.number().min(1).max(300).optional().describe('Video length in seconds (default 10).'),
+                pdfQuality: z.enum(['low', 'medium', 'high']).optional().describe('PDF image quality (default high).'),
+                pdfResampling: z.enum(['detailed', 'basic']).optional().describe('PDF resampling (default detailed).'),
+              }),
+            ),
+          )
+          .describe('Map of node ID to export settings. Set to an empty array [] to export with default settings.'),
+      ]),
+    },
+  ),
+  export_combined_pdf: tool(
+    'Export multiple nodes combined into a single PDF file, one page per node. Pages are auto-ordered by canvas position (top-to-bottom, then left-to-right). Use this instead of "export" when the user wants the nodes merged into one PDF rather than separate files. The quality and resampling used is the highest of any existing PDF export settings found on individual nodes.',
+    { fileId, nodeIds: z.array(z.string()).min(1).describe('The nodes to combine, one PDF page each.') },
+  ),
+  get_fill_image: tool(
+    'Extract the image data from a node that has an image fill. Returns the image as base64-encoded JPEG data optimized for AI consumption. Large images are automatically resized to fit within API size limits. The original image URL is included in the metadata if you need the full-quality source. Returns an error if the node does not exist, or a message if the node has no image fill, is an SVG (use get_jsx), or the image is still generating.',
+    { fileId, nodeId: z.string() },
+  ),
   find_nodes: tool(
     'Find nodes by computed style and/or text. filters are {styleName, styleValue} matchers combined with AND; both accept "*" wildcards, colors match by equivalence, and a literal color also finds token-bound usages. textValue matches text content case-insensitively, anchored, with "*" wildcards.',
     {
@@ -256,7 +289,11 @@ export type ResourceToolName = (typeof RESOURCE_TOOLS)[number];
 export const FONT_TOOLS = ['get_font_family_info'] as const satisfies readonly ToolName[];
 export type FontToolName = (typeof FONT_TOOLS)[number];
 
+/** Tools that render nodes to files or images. The editor renders; `markup mcp` writes export files to disk. */
+export const EXPORT_TOOLS = ['export', 'export_combined_pdf', 'get_fill_image'] as const satisfies readonly ToolName[];
+export type ExportToolName = (typeof EXPORT_TOOLS)[number];
+
 /** Tools the editor answers itself; everything else runs against the routed document with runDocTool. */
-export const EDITOR_TOOLS = [...DOM_TOOLS, ...RESOURCE_TOOLS, ...FONT_TOOLS] as const satisfies readonly ToolName[];
+export const EDITOR_TOOLS = [...DOM_TOOLS, ...RESOURCE_TOOLS, ...FONT_TOOLS, ...EXPORT_TOOLS] as const satisfies readonly ToolName[];
 export type EditorToolName = (typeof EDITOR_TOOLS)[number];
 export type DocToolName = Exclude<ToolName, EditorToolName | 'get_guide'>;

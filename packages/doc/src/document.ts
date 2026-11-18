@@ -1,5 +1,7 @@
 import * as Y from 'yjs';
 import * as comments from './comments';
+import * as exportSettings from './exports';
+import type { ExportSetting } from './exports';
 import type { CommentThread } from './comments';
 import { appendEntry, EntryHistory, plural, readLog, type LogEntry } from './history';
 import { parseHtml } from './html-import';
@@ -203,6 +205,15 @@ export class MarkupDoc {
 
   react(actor: Actor, threadId: string, messageId: string, emoji: string, summary?: string): void {
     this.mutate(actor, summary ?? 'Reacted to a comment', () => comments.react(this, actor, threadId, messageId, emoji));
+  }
+
+  setExports(actor: Actor, nodeId: string, settings: ExportSetting[], summary?: string): void {
+    this.mutate(actor, summary ?? 'Changed export settings', () => exportSettings.setExports(this, nodeId, settings));
+  }
+
+  /** The node's export settings; empty when it has none. */
+  exportsOf(nodeId: string): ExportSetting[] {
+    return exportSettings.exportsOf(this, nodeId);
   }
 
   /** Visible comment threads; deleted threads and messages are excluded. */

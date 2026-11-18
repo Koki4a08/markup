@@ -2,12 +2,14 @@ import { MarkupError, runDocTool, type Actor, type MarkupDoc } from '@markup/doc
 import {
   BRIDGE_PORT,
   DOM_TOOLS,
+  EXPORT_TOOLS,
   FONT_TOOLS,
   RESOURCE_TOOLS,
   type BridgeErrorCode,
   type BridgeMessage,
   type DocToolName,
   type DomToolName,
+  type ExportToolName,
   type FileInfo,
   type FontToolName,
   type RequestMsg,
@@ -15,6 +17,7 @@ import {
   type ResponseMsg,
 } from '@markup/protocol';
 import type { Workspace } from '../workspace/Workspace';
+import { runExportTool } from './exportTools';
 import { runFontTool } from './fontTools';
 import { runResourceTool } from './resourceTools';
 
@@ -52,6 +55,7 @@ class BridgeFailure extends Error {
 
 const isResourceTool = (method: string): method is ResourceToolName => (RESOURCE_TOOLS as readonly string[]).includes(method);
 const isFontTool = (method: string): method is FontToolName => (FONT_TOOLS as readonly string[]).includes(method);
+const isExportTool = (method: string): method is ExportToolName => (EXPORT_TOOLS as readonly string[]).includes(method);
 const isDomTool = (method: string): method is DomToolName => (DOM_TOOLS as readonly string[]).includes(method);
 
 const WRITE_TOOLS = new Set(['create_artboard', 'write_html', 'update_styles', 'set_text_content', 'duplicate_nodes', 'move_nodes', 'delete_nodes', 'rename_nodes']);
@@ -124,6 +128,9 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
           const tool = opts.domTools?.(fileId)?.[msg.method];
           if (!tool) throw new MarkupError('INVALID_ARGUMENT', `${msg.method} needs the file on screen. Call open_file with ${fileId} to bring its tab to the foreground, then retry.`);
           result = await tool(params);
+        } else if (isExportTool(msg.method)) {
+          // Renders off-screen, so background tabs and pages the user is not viewing export too.
+          result = await runExportTool(doc, msg.method, params, { activePageId: workspace.activePageId(fileId) });
         } else {
           result = runDocTool(doc, actor, msg.method as DocToolName, params, { activePageId: workspace.activePageId(fileId), currentUserId: opts.currentUserId ?? 'local-user' });
           if (WRITE_TOOLS.has(msg.method)) {
