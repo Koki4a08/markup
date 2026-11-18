@@ -64,7 +64,7 @@ describe('capture', () => {
     expect(root.getAttribute('layer-name')).toBe(META.title);
     expect(root.getAttribute('data-markup-snapshot')).toBe('v1');
     expect(root.getAttribute('data-source')).toBe(META.url);
-    expect(css(root)).toEqual({ position: 'relative', width: '200px', height: '50px', backgroundColor: 'rgb(255, 255, 255)' });
+    expect(css(root)).toEqual({ position: 'relative', width: '200px', height: '50px' });
   });
 
   it('flex row keeps flex and gap', async () => {

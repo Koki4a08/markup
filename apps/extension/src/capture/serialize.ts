@@ -1,3 +1,4 @@
+import { needsBackdrop, rootClip } from './clip';
 import {
   attrs,
   backdrop,
@@ -529,7 +530,15 @@ export async function capture(
   if (!parts.some(Boolean)) throw new Error('Nothing to capture: the selection is hidden or empty');
   const width = Math.max(0, left - TARGET_GAP);
   const height = Math.max(0, ...boxes.map((b) => b.h));
-  const root = styleAttr([['position', 'relative'], ['width', px(width)], ['height', px(height)], ['background-color', backdrop(els[0]!, env)]]);
+  const single = els.length === 1 && targets !== 'page';
+  const first = els[0]!;
+  const root = styleAttr([
+    ['position', 'relative'],
+    ['width', px(width)],
+    ['height', px(height)],
+    ...(single && !needsBackdrop(first, env) ? [] : ([['background-color', backdrop(first, env)]] as Decl[])),
+    ...(single ? rootClip(first, env) : []),
+  ]);
   const name = snapshotName(meta);
   // The attribute marks the root too: Chrome's async clipboard sanitiser can drop the comment.
   return `${SNAPSHOT_MARKER}<div ${SNAPSHOT_ATTR}="v1" layer-name="${escAttr(name)}" data-source="${escAttr(meta.url)}" style="${root}">${parts.join('')}</div>`;
