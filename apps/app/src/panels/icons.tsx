@@ -142,4 +142,15 @@ export const icons = {
       <path d="M3 3h10a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H7.5L4.5 14v-2.5H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
     </Svg>
   ),
+  copy: (
+    <Svg>
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1" />
+      <path d="M10.5 3.5v-.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5" />
+    </Svg>
+  ),
+  check: (
+    <Svg>
+      <path d="m3 8.5 3 3 7-7" />
+    </Svg>
+  ),
 };

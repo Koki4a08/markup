@@ -266,7 +266,7 @@ export const tools = {
 export type ToolName = keyof typeof tools;
 export type ToolParams<T extends ToolName> = z.infer<(typeof tools)[T]['input']>;
 
-export const PHASE1_TOOLS = Object.keys(tools) as ToolName[];
+export const ALL_TOOLS = Object.keys(tools) as ToolName[];
 
 /** Tools only the editor can answer, because they need the rendered DOM or local UI state. */
 export const DOM_TOOLS = ['get_selection', 'get_computed_styles', 'get_screenshot'] as const satisfies readonly ToolName[];
