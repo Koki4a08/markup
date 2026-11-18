@@ -96,7 +96,8 @@ export function startHub(port = BRIDGE_PORT, opts: HubOptions = {}): Promise<Hub
     for (const [ws, files] of editors) {
       if (fileId ? files.some((f) => f.fileId === fileId) : files.some((f) => f.active)) return ws;
     }
-    if (fileId) return new BridgeError('FILE_NOT_OPEN', `File ${fileId} is not open in Markup. Open it, or call list_resources/open_file.`);
+    // Archiving a file closes its tab, so an archived file lands here too.
+    if (fileId) return new BridgeError('FILE_NOT_OPEN', `File ${fileId} is not open in Markup. Open it, or call list_resources/open_file. If it is archived, call unarchive_resources first.`);
     return editors.keys().next().value!;
   };
 

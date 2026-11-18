@@ -23,17 +23,30 @@ import { sanitizeText } from './canvas/NodeView';
 import { pasteIntoDoc } from './paste';
 import { useTabs, useWorkspace } from './workspace/WorkspaceProvider';
 
+/** Viewport and selection of one tab, kept by the workspace across tab switches. */
+interface TabView {
+  viewport: Viewport;
+  selection: string[];
+}
+
+function useTabView(): TabView {
+  const { doc } = useDoc();
+  const { workspace } = useWorkspace();
+  return useMemo(() => workspace.tabState<TabView>(doc.fileId, 'view', () => ({ viewport: { x: 80, y: 80, zoom: 0.5 }, selection: [] })), [workspace, doc]);
+}
+
 export function Editor() {
+  const view = useTabView();
   return (
-    <SelectionProvider>
-      <EditorShell />
+    <SelectionProvider initial={view.selection}>
+      <EditorShell view={view} />
     </SelectionProvider>
   );
 }
 
 const CURSORS: Record<Tool, string> = { move: 'default', frame: 'crosshair', rect: 'crosshair', text: 'text', hand: 'grab', comment: 'crosshair' };
 
-function EditorShell() {
+function EditorShell({ view }: { view: TabView }) {
   const { doc, actor, undo } = useDoc();
   const pages = usePages();
   const selection = useSelection();
@@ -42,7 +55,13 @@ function EditorShell() {
   const [activePageId, setActivePageId] = useState(() => workspace.activePageId(doc.fileId));
   const page = pages.find((p) => p.type === 'page' && p.id === activePageId) ?? pages.find((p) => p.type === 'page');
   const rootId = page && page.type === 'page' ? page.rootId : '';
-  const [viewport, setViewport] = useState<Viewport>({ x: 80, y: 80, zoom: 0.5 });
+  const [viewport, setViewport] = useState<Viewport>(() => view.viewport);
+  useEffect(() => {
+    view.viewport = viewport;
+  }, [view, viewport]);
+  useEffect(() => {
+    view.selection = selection.ids;
+  }, [view, selection.ids]);
   const [tool, setTool] = useState<Tool>('move');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [collapseSignal, setCollapseSignal] = useState(0);

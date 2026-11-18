@@ -26,9 +26,20 @@ interface OpenTab {
   pageId: string;
   unsubscribe(): void;
   touchTimer: ReturnType<typeof setTimeout> | null;
+  /** Editor state kept while the tab is open; see tabState. */
+  state: Map<string, { value: unknown; dispose?: (value: unknown) => void }>;
+}
+
+function disposeState(tab: OpenTab): void {
+  for (const { value, dispose } of tab.state.values()) dispose?.(value);
+  tab.state.clear();
 }
 
 export const fileUrl = (fileId: string) => `markup://file/${fileId}`;
+
+/** The error for any agent call into an archived file. */
+export const archivedFileError = (fileId: string) =>
+  new MarkupError('FILE_NOT_OPEN', `File ${fileId} is archived, so it cannot be opened or edited. Call unarchive_resources with its ID first.`);
 
 const firstPageId = (doc: MarkupDoc) => doc.pages().find((p) => p.type === 'page')!.id;
 
@@ -68,6 +79,16 @@ export class Workspace {
   constructor(opts: WorkspaceOptions) {
     this.opts = opts;
     this.library = opts.library;
+    this.library.ydoc.on('update', this.closeArchived);
+  }
+
+  /** Archiving a file (from the dashboard or an agent's archive_resources) closes its tab. */
+  private readonly closeArchived = () => {
+    for (const fileId of [...this.order]) if (this.library.get(fileId)?.archived) this.close(fileId);
+  };
+
+  isArchived(fileId: string): boolean {
+    return this.library.get(fileId)?.archived === true;
   }
 
   tabs(): Tab[] {
@@ -101,6 +122,8 @@ export class Workspace {
   close(fileId: string): void {
     const tab = this.openTabs.get(fileId);
     if (!tab) return;
+    // First, so a library update fired from in here (touch) cannot close the tab twice.
+    this.openTabs.delete(fileId);
     const capture = fileId === this.active ? this.opts.captureThumbnail?.(fileId) : undefined;
     if (capture) {
       void capture
@@ -112,13 +135,13 @@ export class Workspace {
         });
     }
     tab.unsubscribe();
+    disposeState(tab);
     if (tab.touchTimer) {
       clearTimeout(tab.touchTimer);
       if (this.library.get(fileId)) this.library.touch(fileId);
     }
     const index = this.order.indexOf(fileId);
     this.order.splice(index, 1);
-    this.openTabs.delete(fileId);
     if (this.active === fileId) this.active = this.order[index] ?? this.order[index - 1] ?? null;
     this.opts.releaseDoc?.(tab.doc);
     this.emit();
@@ -154,6 +177,21 @@ export class Workspace {
   setActivePage(fileId: string, pageId: string): void {
     const tab = this.openTabs.get(fileId);
     if (tab) tab.pageId = pageId;
+  }
+
+  /**
+   * State the editor keeps per open tab so switching tabs or visiting the dashboard does not lose it
+   * (undo history, viewport, selection). Made by create on first use; dispose runs when the tab closes.
+   */
+  tabState<T>(fileId: string, key: string, create: () => T, dispose?: (value: T) => void): T {
+    const tab = this.openTabs.get(fileId);
+    if (!tab) throw new MarkupError('INVALID_ARGUMENT', `File ${fileId} is not open.`);
+    let entry = tab.state.get(key);
+    if (!entry) {
+      entry = { value: create(), dispose: dispose as ((value: unknown) => void) | undefined };
+      tab.state.set(key, entry);
+    }
+    return entry.value as T;
   }
 
   async createFile(opts: { name?: string; parentId?: string; cloneFileId?: string }): Promise<LibraryItem & { url: string }> {
@@ -202,9 +240,11 @@ export class Workspace {
 
   /** Releases every open doc without notifying listeners; for teardown. */
   dispose(): void {
+    this.library.ydoc.off('update', this.closeArchived);
     for (const fileId of [...this.order]) {
       const tab = this.openTabs.get(fileId)!;
       tab.unsubscribe();
+      disposeState(tab);
       if (tab.touchTimer) clearTimeout(tab.touchTimer);
       this.opts.releaseDoc?.(tab.doc);
     }
@@ -222,7 +262,12 @@ export class Workspace {
 
   private async load(fileId: string, pageId?: string): Promise<MarkupDoc> {
     const item = this.requireFile(fileId);
+    if (item.archived) throw archivedFileError(fileId);
     const doc = await this.opts.openDoc(fileId);
+    if (this.isArchived(fileId)) {
+      this.opts.releaseDoc?.(doc);
+      throw archivedFileError(fileId);
+    }
     if (pageId !== undefined && !doc.pages().some((p) => p.type === 'page' && p.id === pageId)) {
       this.opts.releaseDoc?.(doc);
       throw new MarkupError('PAGE_NOT_FOUND', `Page ${pageId} does not exist in ${item.name}.`);
@@ -230,7 +275,7 @@ export class Workspace {
     // Indicators persist in the file; any left from an earlier session belong to agents that are gone.
     doc.clearWorking();
     if (doc.name !== item.name) doc.name = item.name;
-    const tab: OpenTab = { doc, pageId: pageId ?? firstPageId(doc), touchTimer: null, unsubscribe: () => {} };
+    const tab: OpenTab = { doc, pageId: pageId ?? firstPageId(doc), touchTimer: null, unsubscribe: () => {}, state: new Map() };
     const onUpdate = () => {
       if (tab.touchTimer) clearTimeout(tab.touchTimer);
       tab.touchTimer = setTimeout(() => {

@@ -9,6 +9,20 @@ const you: Actor = { id: 'local-user', kind: 'human', name: 'You' };
 afterEach(() => vi.useRealTimers());
 
 describe('workspace', () => {
+  it('archiving an open file closes its tab once, even with a pending touch', async () => {
+    const { workspace, addFile, library, released } = memoryWorkspace();
+    const id = addFile('Landing');
+    const doc = await workspace.open(id);
+    const disposed: string[] = [];
+    workspace.tabState(id, 'probe', () => 'x', () => disposed.push(id));
+    doc.createPage(you, { name: 'Edited' });
+    library.archive([id]);
+    expect(workspace.tabs()).toEqual([]);
+    expect(released).toEqual([id]);
+    expect(disposed).toEqual([id]);
+    await expect(workspace.open(id)).rejects.toMatchObject({ code: 'FILE_NOT_OPEN', message: expect.stringContaining('unarchive_resources') });
+  });
+
   it('open twice reuses the doc', async () => {
     const { workspace, addFile, opened } = memoryWorkspace();
     const id = addFile('Landing');
