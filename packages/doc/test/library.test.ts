@@ -146,6 +146,38 @@ describe('MarkupLibrary', () => {
     expect(codeOf(() => lib.unarchive(['ghost']))).toBe('INVALID_ARGUMENT');
   });
 
+  it('unarchive of a folder restores its subtree, keeping parents', () => {
+    const lib = new MarkupLibrary();
+    const p = lib.createFolder({ name: 'P' });
+    const c = lib.createFolder({ name: 'C', parentId: p.id });
+    lib.addFile({ id: 'a', name: 'A', parentId: c.id });
+    lib.archive([p.id]);
+    lib.unarchive([p.id]);
+    for (const id of [p.id, c.id, 'a']) expect(lib.get(id)!.archived).toBe(false);
+    expect(lib.get(c.id)!.parentId).toBe(p.id);
+    expect(lib.get('a')!.parentId).toBe(c.id);
+  });
+
+  it('unarchive reparenting is order independent', () => {
+    for (const order of [['a', 'P'], ['P', 'a']]) {
+      const lib = new MarkupLibrary();
+      const p = lib.createFolder({ name: 'P' });
+      lib.addFile({ id: 'a', name: 'A', parentId: p.id });
+      lib.archive([p.id]);
+      lib.unarchive(order.map((x) => (x === 'P' ? p.id : x)));
+      expect(lib.get('a')!.archived).toBe(false);
+      expect(lib.get('a')!.parentId).toBe(p.id);
+    }
+  });
+
+  it('unarchive with an invalid id changes nothing', () => {
+    const lib = new MarkupLibrary();
+    lib.addFile({ id: 'a', name: 'A' });
+    lib.archive(['a']);
+    expect(codeOf(() => lib.unarchive(['a', 'ghost']))).toBe('INVALID_ARGUMENT');
+    expect(lib.get('a')!.archived).toBe(true);
+  });
+
   it('touch bumps updatedAt and sets thumbnail', () => {
     const lib = new MarkupLibrary();
     const a = lib.addFile({ id: 'a', name: 'A' });
