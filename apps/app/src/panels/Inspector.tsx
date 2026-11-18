@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MarkupNode, Styles, StyleValue } from '@markup/doc';
 import { icons } from './icons';
 import { ColorField, common, MIXED, Section, SelectField, TextField, type FieldValue } from './fields/fields';
 import { useDoc } from '../store/DocProvider';
 import { useNodes } from '../store/hooks';
 import { useSelection } from '../selection';
+import { localFontsGranted, requestLocalFonts } from '../fonts/localFonts';
 
 /** Style keys owned by a dedicated section; everything else lands in Other styles. */
 const OWNED = new Set([
@@ -135,6 +136,7 @@ export function Inspector() {
 
       {allText && (
         <Section title="Text">
+          <LocalFontsButton />
           <TextField label="Font" value={value('fontFamily')} placeholder="inherit" onCommit={(v) => set({ fontFamily: v || null })} />
           <TextField label="Size" unit="px" value={value('fontSize')} onCommit={(v) => set({ fontSize: v || null })} />
           <SelectField label="Weight" value={value('fontWeight') === undefined ? undefined : String(value('fontWeight'))} options={['100', '200', '300', '400', '500', '600', '700', '800', '900'].map((w) => [w, w])} onChange={(v) => set({ fontWeight: Number(v) })} />
@@ -202,5 +204,28 @@ function AddStyle({ onAdd }: { onAdd(key: string, value: string): void }) {
         Add
       </button>
     </form>
+  );
+}
+
+/** Asks for access to the fonts installed on this machine; only a click may trigger the browser prompt. */
+function LocalFontsButton() {
+  const [state, setState] = useState<'unknown' | 'granted' | 'unavailable'>('unknown');
+  useEffect(() => {
+    let live = true;
+    void localFontsGranted().then((ok) => live && ok && setState('granted'));
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (state === 'granted') return null;
+  return (
+    <button
+      type="button"
+      className="field-input"
+      onClick={() => void requestLocalFonts().then((ok) => setState(ok ? 'granted' : 'unavailable'))}
+      title={state === 'unavailable' ? 'Local fonts are not available or access was denied' : 'Let Markup see the fonts installed on this computer'}
+    >
+      Use local fonts
+    </button>
   );
 }
