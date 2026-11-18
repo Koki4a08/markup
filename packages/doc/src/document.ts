@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { appendEntry, EntryHistory, plural, readLog, type LogEntry } from './history';
 import { parseHtml } from './html-import';
 import * as ops from './ops';
 import * as tokens from './tokens';
@@ -19,6 +20,7 @@ export class MarkupDoc {
   readonly meta: Y.Map<unknown>;
   readonly pagesArr: Y.Array<Y.Map<unknown>>;
   readonly nodes: Y.Map<YNode>;
+  private readonly history: EntryHistory;
 
   constructor(opts: { ydoc?: Y.Doc; name?: string } = {}) {
     this.ydoc = opts.ydoc ?? new Y.Doc();
@@ -32,6 +34,7 @@ export class MarkupDoc {
         this.insertPage('Page 1', null);
       }, null);
     }
+    this.history = new EntryHistory(this);
   }
 
   get fileId(): string {
@@ -59,13 +62,11 @@ export class MarkupDoc {
     });
   }
 
-  createPage(actor: Actor, opts: { name?: string; icon?: PageIcon } = {}): string {
-    let id = '';
-    this.ydoc.transact(() => {
+  createPage(actor: Actor, opts: { name?: string; icon?: PageIcon } = {}, summary?: string): string {
+    return this.mutate(actor, summary ?? 'Created 1 page', () => {
       const count = this.pages().filter((p) => p.type === 'page').length;
-      id = this.insertPage(opts.name ?? `Page ${count + 1}`, opts.icon ?? null);
-    }, actor);
-    return id;
+      return this.insertPage(opts.name ?? `Page ${count + 1}`, opts.icon ?? null);
+    });
   }
 
   getNode(id: string): MarkupNode | undefined {
@@ -109,58 +110,73 @@ export class MarkupDoc {
     return this.nodes.size;
   }
 
-  insertNodes(actor: Actor, parentId: string, specs: NodeSpec[], index?: number): string[] {
-    return this.mutate(actor, () => ops.insertNodes(this, parentId, specs, index));
+  insertNodes(actor: Actor, parentId: string, specs: NodeSpec[], index?: number, summary?: string): string[] {
+    return this.mutate(actor, summary ?? `Inserted ${plural(countSpecs(specs), 'node')}`, () => ops.insertNodes(this, parentId, specs, index));
   }
 
-  replaceNode(actor: Actor, targetId: string, specs: NodeSpec[]): string[] {
-    return this.mutate(actor, () => ops.replaceNode(this, targetId, specs));
+  replaceNode(actor: Actor, targetId: string, specs: NodeSpec[], summary?: string): string[] {
+    return this.mutate(actor, summary ?? `Replaced 1 node with ${plural(countSpecs(specs), 'node')}`, () => ops.replaceNode(this, targetId, specs));
   }
 
-  updateStyles(actor: Actor, updates: StyleUpdate[]): { ignoredStyles: Record<string, string[]> } {
-    return { ignoredStyles: this.mutate(actor, () => ops.updateStyles(this, updates)) };
-  }
-
-  writeHtml(actor: Actor, targetNodeId: string, html: string, mode: 'insert-children' | 'replace'): { nodeIds: string[]; ignoredStyles: string[] } {
+  writeHtml(
+    actor: Actor,
+    targetNodeId: string,
+    html: string,
+    mode: 'insert-children' | 'replace',
+    summary?: string,
+  ): { nodeIds: string[]; ignoredStyles: string[] } {
     const { specs, ignored } = parseHtml(html);
-    const nodeIds = mode === 'replace' ? this.replaceNode(actor, targetNodeId, specs) : this.insertNodes(actor, targetNodeId, specs);
+    const nodeIds = mode === 'replace' ? this.replaceNode(actor, targetNodeId, specs, summary) : this.insertNodes(actor, targetNodeId, specs, undefined, summary);
     return { nodeIds, ignoredStyles: ignored };
   }
 
-  setText(actor: Actor, updates: { nodeId: string; html: string }[]): void {
-    this.mutate(actor, () => ops.setText(this, updates));
+  updateStyles(actor: Actor, updates: StyleUpdate[], summary?: string): { ignoredStyles: Record<string, string[]> } {
+    const count = new Set(updates.flatMap((u) => u.nodeIds)).size;
+    return { ignoredStyles: this.mutate(actor, summary ?? `Updated styles on ${plural(count, 'node')}`, () => ops.updateStyles(this, updates)) };
   }
 
-  moveNodes(actor: Actor, moves: Move[]): MoveResult {
-    return this.mutate(actor, () => ops.moveNodes(this, moves));
+  setText(actor: Actor, updates: { nodeId: string; html: string }[], summary?: string): void {
+    this.mutate(actor, summary ?? `Set text on ${plural(updates.length, 'node')}`, () => ops.setText(this, updates));
   }
 
-  deleteNodes(actor: Actor, ids: string[]): void {
-    this.mutate(actor, () => ops.deleteNodes(this, ids));
+  moveNodes(actor: Actor, moves: Move[], summary?: string): MoveResult {
+    return this.mutate(actor, summary ?? `Moved ${plural(moves.length, 'node')}`, () => ops.moveNodes(this, moves));
   }
 
-  duplicateNodes(actor: Actor, items: { id: string; parentId?: string }[]): DuplicateResult[] {
-    return this.mutate(actor, () => ops.duplicateNodes(this, items));
+  deleteNodes(actor: Actor, ids: string[], summary?: string): void {
+    this.mutate(actor, summary ?? `Deleted ${plural(ids.length, 'node')}`, () => ops.deleteNodes(this, ids));
   }
 
-  renameNodes(actor: Actor, updates: { nodeId: string; name: string }[]): void {
-    this.mutate(actor, () => ops.renameNodes(this, updates));
+  duplicateNodes(actor: Actor, items: { id: string; parentId?: string }[], summary?: string): DuplicateResult[] {
+    return this.mutate(actor, summary ?? `Duplicated ${plural(items.length, 'node')}`, () => ops.duplicateNodes(this, items));
+  }
+
+  renameNodes(actor: Actor, updates: { nodeId: string; name: string }[], summary?: string): void {
+    this.mutate(actor, summary ?? `Renamed ${plural(updates.length, 'node')}`, () => ops.renameNodes(this, updates));
   }
 
   setWorking(actor: Actor, artboardIds: string[] | 'all', on: boolean): void {
-    this.mutate(actor, () => ops.setWorking(this, actor, artboardIds, on));
+    this.mutate(actor, null, () => ops.setWorking(this, actor, artboardIds, on));
   }
 
-  createTokens(actor: Actor, list: Token[]): TokenResult[] {
-    return this.mutate(actor, () => tokens.createTokens(this, list));
+  createTokens(actor: Actor, list: Token[], summary?: string): TokenResult[] {
+    return this.mutate(actor, summary ?? `Created ${plural(list.length, 'token')}`, () => tokens.createTokens(this, list));
   }
 
-  setTokens(actor: Actor, edits: TokenEdit[]): TokenResult[] {
-    return this.mutate(actor, () => tokens.setTokens(this, edits));
+  setTokens(actor: Actor, edits: TokenEdit[], summary?: string): TokenResult[] {
+    return this.mutate(actor, summary ?? `Edited ${plural(edits.length, 'token')}`, () => tokens.setTokens(this, edits));
   }
 
   getTokens(q?: TokenQuery): Token[] | string {
     return tokens.getTokens(this, q);
+  }
+
+  log(): LogEntry[] {
+    return readLog(this);
+  }
+
+  revertEntry(actor: Actor, seq: number): void {
+    this.history.revert(actor, seq);
   }
 
   working(): Record<string, Actor> {
@@ -171,11 +187,12 @@ export class MarkupDoc {
     return ops.artboardOf(this, nodeId);
   }
 
-  /** Runs fn in one transaction whose origin is the actor. */
-  protected mutate<T>(actor: Actor, fn: () => T): T {
+  /** Runs fn in one transaction whose origin is the actor; a non-null summary appends a log entry. */
+  protected mutate<T>(actor: Actor, summary: string | null, fn: () => T): T {
     let result!: T;
     this.ydoc.transact(() => {
       result = fn();
+      if (summary !== null) this.history.tag(appendEntry(this, actor, summary));
     }, actor);
     return result;
   }
@@ -193,4 +210,8 @@ export class MarkupDoc {
     this.pagesArr.push([page]);
     return pageId;
   }
+}
+
+function countSpecs(specs: NodeSpec[]): number {
+  return specs.reduce((n, s) => n + 1 + countSpecs(s.children ?? []), 0);
 }
