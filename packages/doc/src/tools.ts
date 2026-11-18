@@ -179,6 +179,15 @@ export function runDocTool(doc: MarkupDoc, actor: Actor, method: DocToolName, ra
       const p = parse(method, rawParams);
       return { pageId: doc.createPage(actor, { name: p.name, icon: p.icon as PageIcon | undefined }) };
     }
+    case 'update_pages': {
+      const p = parse(method, rawParams);
+      doc.updatePages(actor, p.updates);
+      return { updated: p.updates.map((u) => u.pageId) };
+    }
+    case 'arrange_pages': {
+      const p = parse(method, rawParams);
+      return { pages: doc.arrangePages(actor, p.order, p.removeDividerIds) };
+    }
     default: {
       const never: never = method;
       throw new MarkupError('INVALID_ARGUMENT', `Unknown tool ${String(never)}.`);

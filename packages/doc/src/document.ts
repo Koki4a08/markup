@@ -2,6 +2,8 @@ import * as Y from 'yjs';
 import { appendEntry, EntryHistory, plural, readLog, type LogEntry } from './history';
 import { parseHtml } from './html-import';
 import * as ops from './ops';
+import * as pages from './pages';
+import type { ArrangeItem, PageUpdate } from './pages';
 import * as tokens from './tokens';
 import type { Token, TokenEdit, TokenQuery, TokenResult } from './tokens';
 import type { DuplicateResult, Move, MoveResult, StyleUpdate } from './ops';
@@ -68,6 +70,15 @@ export class MarkupDoc {
       const count = this.pages().filter((p) => p.type === 'page').length;
       return this.insertPage(opts.name ?? `Page ${count + 1}`, opts.icon ?? null);
     });
+  }
+
+  updatePages(actor: Actor, updates: PageUpdate[], summary?: string): void {
+    this.mutate(actor, summary ?? `Updated ${plural(updates.length, 'page')}`, () => pages.updatePages(this, updates));
+  }
+
+  arrangePages(actor: Actor, order: ArrangeItem[], removeDividerIds?: string[], summary?: string): PageEntry[] {
+    this.mutate(actor, summary ?? 'Arranged pages', () => pages.arrangePages(this, order, removeDividerIds));
+    return this.pages();
   }
 
   getNode(id: string): MarkupNode | undefined {
