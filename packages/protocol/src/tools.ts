@@ -126,6 +126,18 @@ export const tools = {
       .min(1),
   }),
   create_page: tool('Create a page after the one the user is viewing and return its ID. Optional icon from a fixed set.', { fileId, name: z.string().optional(), icon: PAGE_ICON.optional() }),
+  update_pages: tool('Change the name and/or icon of one or more pages in the file. Does not switch which page the user is viewing. Supports batch updates. Icon is one of the fixed set, or null to restore the default.', {
+    fileId,
+    updates: z.array(z.object({ pageId: z.string(), name: z.string().optional(), icon: PAGE_ICON.nullable().optional() })).min(1),
+  }),
+  arrange_pages: tool(
+    'Reorder the page list and add or remove dividers in one call. Pass the complete new order; the call is rejected without changes if it misses an item or lists an unknown or repeated ID, which also happens when pages were added or removed since you read the list. Pages are never deleted. Does not switch which page the user is viewing. Returns the resulting page list, including the IDs of new dividers.',
+    {
+      fileId,
+      order: z.array(z.union([z.string(), z.object({ type: z.literal('divider') })])).describe('Complete new order: page or divider IDs, or { "type": "divider" } for a new divider.'),
+      removeDividerIds: z.array(z.string()).optional().describe('IDs of dividers to remove; they must not appear in order.'),
+    },
+  ),
 };
 
 export type ToolName = keyof typeof tools;
