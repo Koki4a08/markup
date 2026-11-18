@@ -7,3 +7,4 @@ export { toJsx, toTailwindClasses, type JsxOptions } from './jsx-export';
 export { treeSummary, findNodes, parseColor, plainText, type FindQuery, type FindResult } from './query';
 export { resolveTokenValue, TOKEN_TYPES, type Token, type TokenType, type TokenEdit, type TokenQuery, type TokenResult } from './tokens';
 export { wildcard } from './wildcard';
+export { ActorUndo, type LogEntry } from './history';
