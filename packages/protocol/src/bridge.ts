@@ -40,7 +40,7 @@ export type ResponseMsg =
   | { type: 'response'; id: string; ok: false; error: { code: BridgeErrorCode; message: string } };
 
 export type BridgeMessage =
-  | { type: 'hello'; role: 'editor' | 'agent'; clientId: string; app: 'markup'; files?: FileInfo[] }
+  | { type: 'hello'; role: 'editor' | 'agent' | 'hub'; clientId: string; app: 'markup'; files?: FileInfo[] }
   | { type: 'files'; files: FileInfo[] }
   | RequestMsg
   | ResponseMsg;
