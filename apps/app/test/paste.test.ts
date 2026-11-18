@@ -77,6 +77,45 @@ describe('paste', () => {
     expect(doc.requireNode(frame).children).toHaveLength(0);
   });
 
+  const snapshotBody = '<!--markup:snapshot v1--><div layer-name="Wrapped" style="position:relative;width:600px;height:400px"><p>Hi</p></div>';
+  it.each([
+    ['a meta tag', `<meta charset='utf-8'>${snapshotBody}`],
+    ['html/body with fragment comments', `<html><body><!--StartFragment-->${snapshotBody}<!--EndFragment--></body></html>`],
+  ])('snapshot payload behind %s still makes an artboard', async (_name, html) => {
+    const { doc, rootId } = setup();
+    const ids = await pasteIntoDoc(doc, human, { html }, target(rootId));
+    expect(ids).toHaveLength(1);
+    const n = doc.requireNode(ids[0]!);
+    expect(n.name).toBe('Wrapped');
+    expect(n.styles).toMatchObject({ position: 'absolute' });
+    expect(parseFloat(String(n.styles.width))).toBe(600);
+    expect(doc.requireNode(rootId).children).toEqual(ids);
+  });
+
+  it('keeps no script-capable styles, urls or images in the stored document', async () => {
+    const { doc, rootId } = setup();
+    const html =
+      '<div style="background:url(javascript:alert(1));width:100px;height:50px">' +
+      '<p style="color:#112233;background:url(javascript:alert(2))">kept</p>' +
+      '<div style="background-image:url(https://example.com/a.png);width:10px;height:10px">remote</div>' +
+      '<div style="width:5px;behavior:url(x.htc);-moz-binding:url(x);height:7px;background:expression(alert(1))">b</div>' +
+      '<div style="background:url(data:text/html;base64,PHNjcmlwdD4=)">d</div>' +
+      '<img src="data:text/html;base64,PHNjcmlwdD4=" style="width:4px">' +
+      '<img src="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" style="width:4px">' +
+      '<img src="javascript:alert(1)">' +
+      '<img src="https://example.com/ok.png" style="width:20px;height:20px">' +
+      '<svg width="10" height="10" onload="alert(1)"><rect width="10" height="10" onclick="x()"/><script>alert(1)</script></svg></div>';
+    const ids = await pasteIntoDoc(doc, human, { html }, target(rootId));
+    const nodes = allNodes(doc, ids[0]!);
+    const dump = JSON.stringify(nodes);
+    expect(dump).not.toMatch(/javascript:|expression\(|-moz-binding|behavior|data:text\/html|data:image\/svg|onload|onclick|<script|x\.htc/i);
+    expect(dump).toContain('https://example.com/a.png');
+    expect(dump).toContain('#112233');
+    const images = nodes.filter((n) => n.type === 'image');
+    expect(images.map((n) => n.src)).toEqual(['https://example.com/ok.png']);
+    expect(nodes.find((n) => n.type === 'svg')?.svg).toContain('<rect');
+  });
+
   it('svg text becomes svg node', async () => {
     const { doc, rootId } = setup();
     const ids = await pasteIntoDoc(doc, human, { text: '<svg width="40" height="20" viewBox="0 0 40 20" onload="x()"><script>1</script><rect width="40" height="20"/></svg>' }, target(rootId));

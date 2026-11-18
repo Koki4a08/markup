@@ -32,12 +32,42 @@ const px = (v: unknown): number | undefined => {
 
 // A private instance, so the hooks below never touch the sanitiser the canvas uses.
 const purifier = DOMPurify(window);
+const SAFE_URL = /^(https?:|data:image\/(png|jpe?g|gif|webp|avif)[;,])/i;
+const BAD_VALUE = /javascript:|vbscript:|expression\(|-moz-binding|behavior\s*:|@import|image-set\(|\\/i;
+const CSS_URL = /url\(\s*(['"]?)(.*?)\1\s*\)/gi;
+
+/** Splits a style attribute on top-level semicolons (data URLs and quoted strings contain their own). */
+function declarations(style: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = '';
+  let cur = '';
+  for (const ch of style) {
+    if (quote) {
+      if (ch === quote) quote = '';
+    } else if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ';' && depth === 0) {
+      out.push(cur);
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** Drops Office cruft and anything that can run script or load a non-image, non-http resource. */
+function safeDeclaration(d: string): boolean {
+  if (!d.trim() || /^\s*-?mso-/i.test(d) || BAD_VALUE.test(d)) return false;
+  for (const m of d.matchAll(CSS_URL)) if (!SAFE_URL.test(m[2]!.trim())) return false;
+  return !/url\(/i.test(d.replace(CSS_URL, ''));
+}
+
 purifier.addHook('uponSanitizeAttribute', (_node, data) => {
-  if (data.attrName !== 'style') return;
-  data.attrValue = data.attrValue
-    .split(';')
-    .filter((d) => d.trim() && !/^\s*-?mso-/i.test(d))
-    .join(';');
+  if (data.attrName === 'style') data.attrValue = declarations(data.attrValue).filter(safeDeclaration).join(';');
 });
 
 /** Sanitises pasted HTML and strips Office/Docs cruft; returns the cleaned body markup. */
@@ -50,6 +80,9 @@ export function cleanHtml(html: string): string {
   const body = new DOMParser().parseFromString(`<body>${safe}</body>`, 'text/html').body;
   // Google Docs wraps everything in <b id="docs-internal-guid-…"> (a bold lie); unwrap it.
   body.querySelectorAll('[id^="docs-internal-guid"]').forEach((el) => el.replaceWith(...Array.from(el.childNodes)));
+  body.querySelectorAll('img').forEach((img) => {
+    if (!SAFE_URL.test((img.getAttribute('src') ?? '').trim())) img.remove();
+  });
   body.querySelectorAll('[style=""]').forEach((el) => el.removeAttribute('style'));
   return body.innerHTML;
 }
@@ -116,7 +149,7 @@ async function toSpecs(data: PasteData): Promise<{ specs: NodeSpec[]; snapshot: 
 
   const html = data.html?.trim();
   if (html) {
-    const snapshot = html.startsWith(SNAPSHOT_MARKER);
+    const snapshot = html.includes(SNAPSHOT_MARKER);
     const { specs } = parseHtml(cleanHtml(html));
     if (specs.length) return { specs, snapshot };
   }
