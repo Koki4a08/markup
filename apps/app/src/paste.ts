@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import { parseHtml, type Actor, type MarkupDoc, type NodeSpec, type Styles } from '@markup/doc';
 import type { Point } from './canvas/viewport';
+import { NODES_ATTR, NODES_MARKER } from './clipboard/nodes';
 
 export interface PasteData {
   html?: string;
@@ -153,14 +154,31 @@ function snapshotRoots(cleaned: string): { snapshot: boolean; any: boolean } {
   return { snapshot: roots.length > 0, any: roots.some((el) => el.getAttribute(DIALECT_ATTR) === 'any') };
 }
 
+/** The layers of a Markup copy (Copy, ⌘C on the canvas): the root div's children, or null when the HTML is not one. */
+function markupNodes(cleaned: string, raw: string): NodeSpec[] | null {
+  const body = new DOMParser().parseFromString(`<body>${cleaned}</body>`, 'text/html').body;
+  const root = Array.from(body.children).find((el) => el.localName === 'div' && el.hasAttribute(NODES_ATTR));
+  if (!root) return raw.includes(NODES_MARKER) ? parseHtml(cleaned, { dialect: 'any' }).specs : null;
+  return parseHtml(root.innerHTML, { dialect: 'any' }).specs;
+}
+
+interface Specs {
+  specs: NodeSpec[];
+  snapshot: boolean;
+  /** Layers copied from Markup: pasted where they belong rather than wrapped. */
+  nodes?: boolean;
+}
+
 /** Everything the clipboard holds, as node specs, plus whether it is a snapshot payload. */
-async function toSpecs(data: PasteData): Promise<{ specs: NodeSpec[]; snapshot: boolean }> {
+async function toSpecs(data: PasteData): Promise<Specs> {
   const images = (data.files ?? []).filter((f) => IMAGE_TYPES.test(f.type) || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(f.name));
   if (images.length) return { specs: await Promise.all(images.map(imageSpec)), snapshot: false };
 
   const html = data.html?.trim();
   if (html) {
     const cleaned = cleanHtml(html);
+    const copied = markupNodes(cleaned, html);
+    if (copied?.length) return { specs: copied, snapshot: false, nodes: true };
     const roots = snapshotRoots(cleaned);
     const snapshot = html.includes(SNAPSHOT_MARKER) || roots.snapshot;
     const { specs } = parseHtml(cleaned, { dialect: roots.any ? 'any' : 'strict' });
@@ -215,7 +233,7 @@ const POSITION_KEYS = ['position', 'left', 'top', 'width', 'height'] as const;
  * layers created. Rejects with a user-facing message when the content cannot be used (HEIC without decoder).
  */
 export async function pasteIntoDoc(doc: MarkupDoc, actor: Actor, data: PasteData, target: PasteTarget): Promise<string[]> {
-  const { specs, snapshot } = await toSpecs(data);
+  const { specs, snapshot, nodes } = await toSpecs(data);
   if (specs.length === 0) return [];
   const mode = target.mode ?? 'paste';
   const selected = target.selection.filter((id) => {
@@ -246,6 +264,17 @@ export async function pasteIntoDoc(doc: MarkupDoc, actor: Actor, data: PasteData
     const at = { position: 'absolute', left: px(first.styles.left) ?? 0, top: px(first.styles.top) ?? 0 };
     const placed = specs.map((s, i) => (i === 0 ? { ...s, styles: { ...s.styles, ...at } } : s));
     return doc.batch(actor, summary(specs.length), () => doc.insertNodes(actor, parent.id, placed, parent.children.indexOf(first.id) + 1));
+  }
+
+  if (nodes) {
+    // Copied layers: into the selected frame, else beside the selected layer; with nothing selected, artboards
+    // return to where they were and anything else gets a new artboard.
+    const first = selected.length ? doc.requireNode(selected[0]!) : null;
+    const into = first ? (first.type === 'frame' ? first : doc.requireNode(first.parentId!)) : null;
+    if (into && into.type !== 'root') return doc.batch(actor, summary(specs.length), () => doc.insertNodes(actor, into.id, specs));
+    const placed = specs.every((s) => s.styles?.position === 'absolute' && s.styles.left !== undefined && s.styles.top !== undefined);
+    const top = placed ? specs : [newArtboard(specs, target.viewportCenter)];
+    return doc.batch(actor, summary(specs.length), () => doc.insertNodes(actor, target.rootId, top));
   }
 
   // Plain paste: into the one selected frame, beside a selected non-frame, else a new artboard.

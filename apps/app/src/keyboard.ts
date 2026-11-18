@@ -24,7 +24,21 @@ export type Command =
   | 'copyReact'
   | 'copyTailwind'
   | 'pasteOnTop'
-  | 'pasteToReplace';
+  | 'pasteToReplace'
+  | 'deselect'
+  | 'copy'
+  | 'copyLink'
+  | 'copyHtml'
+  | 'copySvg'
+  | 'paste'
+  | 'copyStyles'
+  | 'pasteStyles'
+  | 'removeFlex'
+  | 'ungroup'
+  | 'bringToFront'
+  | 'sendToBack'
+  | 'moveForward'
+  | 'moveBackward';
 
 export interface KeyLike {
   key: string;
@@ -35,11 +49,14 @@ export interface KeyLike {
   altKey: boolean;
 }
 
-interface Binding {
+export interface KeyCombo {
   code: string;
   mod?: boolean;
   shift?: boolean;
   alt?: boolean;
+}
+
+interface Binding extends KeyCombo {
   command: Command;
 }
 
@@ -74,6 +91,18 @@ const BINDINGS: Binding[] = [
   { code: 'KeyT', alt: true, command: 'copyTailwind' },
   { code: 'KeyV', mod: true, shift: true, command: 'pasteOnTop' },
   { code: 'KeyR', mod: true, shift: true, command: 'pasteToReplace' },
+  { code: 'Escape', shift: true, command: 'deselect' },
+  { code: 'KeyC', mod: true, command: 'copy' },
+  { code: 'KeyL', mod: true, command: 'copyLink' },
+  { code: 'KeyC', mod: true, alt: true, command: 'copyStyles' },
+  { code: 'KeyV', mod: true, alt: true, command: 'pasteStyles' },
+  { code: 'KeyA', shift: true, alt: true, command: 'removeFlex' },
+  { code: 'KeyG', mod: true, shift: true, command: 'ungroup' },
+  { code: 'BracketRight', command: 'bringToFront' },
+  { code: 'BracketLeft', command: 'sendToBack' },
+  { code: 'BracketRight', mod: true, command: 'moveForward' },
+  { code: 'BracketLeft', mod: true, command: 'moveBackward' },
+  // No plain mod+V: the browser's paste event carries the clipboard without a permission prompt.
 ];
 
 export function resolveShortcut(e: KeyLike, isMac: boolean): Command | null {
@@ -86,3 +115,18 @@ export function resolveShortcut(e: KeyLike, isMac: boolean): Command | null {
 }
 
 export const isMacPlatform = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+const KEY_NAMES: Record<string, string> = { Escape: 'Esc', Enter: 'Enter', BracketRight: ']', BracketLeft: '[', Backslash: '\\',Backspace: '⌫', Delete: 'Del' };
+
+/** Display text for a key combo: `Ctrl+Shift+C` on Windows and Linux, `⇧⌘C` on macOS. */
+export function formatShortcut(combo: KeyCombo, isMac: boolean): string {
+  const key = KEY_NAMES[combo.code] ?? combo.code.replace(/^(Key|Digit)/, '');
+  if (isMac) return `${combo.alt ? '⌥' : ''}${combo.shift ? '⇧' : ''}${combo.mod ? '⌘' : ''}${key}`;
+  return [combo.mod && 'Ctrl', combo.shift && 'Shift', combo.alt && 'Alt', key].filter(Boolean).join('+');
+}
+
+/** The first shortcut bound to a command, formatted for the platform; '' when it has none. */
+export function shortcutLabel(command: Command, isMac: boolean): string {
+  const binding = BINDINGS.find((b) => b.command === command);
+  return binding ? formatShortcut(binding, isMac) : '';
+}
