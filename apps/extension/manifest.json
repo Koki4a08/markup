@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Markup Snapshot",
+  "version": "0.1.0",
+  "description": "Pick any element on a web page and copy it into Markup as editable layers.",
+  "permissions": ["activeTab", "scripting", "clipboardWrite"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "Markup Snapshot",
+    "default_icon": { "16": "icons/16x16.png", "32": "icons/32x32.png", "48": "icons/48x48.png", "128": "icons/128x128.png" }
+  },
+  "icons": { "16": "icons/16x16.png", "32": "icons/32x32.png", "48": "icons/48x48.png", "128": "icons/128x128.png" },
+  "commands": {
+    "toggle-snapshot": {
+      "suggested_key": { "default": "Ctrl+Shift+P", "mac": "Command+Shift+P" },
+      "description": "Toggle Markup Snapshot"
+    }
+  }
+}
