@@ -101,8 +101,14 @@ export const tools = {
     },
   ),
   write_html: tool(
-    'Write HTML into the design. Write incrementally: one visual group per call so the user watches progress. Rules: inline style="" only; flex, padding and gap for layout; no margin, display:inline, display:grid or HTML tables; border-box everywhere; <pre> for code. layer-name="Hero" names a layer. <x-markup-clone node-id="..." style="..."/> clones an existing node with overrides. Local images use markup-asset:///absolute/path. mode "insert-children" adds children to the target; "replace" swaps the target. targetNodeId: ' + LINK_HINT,
-    { fileId, html: z.string(), targetNodeId: nodeRef, mode: z.enum(['insert-children', 'replace']) },
+    'Write HTML into the design. Write incrementally: one visual group per call so the user watches progress. Rules: inline style="" only; flex, padding and gap for layout; no margin, display:inline, display:grid or HTML tables; border-box everywhere; <pre> for code. layer-name="Hero" names a layer. <x-markup-clone node-id="..." style="..."/> clones an existing node with overrides. Local images use markup-asset:///absolute/path. mode "insert-children" (default) adds children to the target; "replace" swaps the target. Omit targetNodeId to put a standalone component (a button, a card, a nav bar) straight on the page: each top-level element becomes its own artboard, with no empty frame around it, placed right of the last artboard; give it a pixel width. Use create_artboard only for full screens. targetNodeId: ' + LINK_HINT,
+    {
+      fileId,
+      pageId: z.string().optional().describe('The page to place top-level elements on when targetNodeId is omitted. Omit to use the active page.'),
+      html: z.string(),
+      targetNodeId: nodeRef.optional(),
+      mode: z.enum(['insert-children', 'replace']).optional(),
+    },
   ),
   update_styles: tool(
     'Update styles on one or more nodes in a batch. Supports design tokens as CSS variables. Setting top/left on an artboard moves it on the canvas. Styles inert in the node context are dropped and returned under ignoredStyles. An empty string or null removes a property. nodeIds: ' + LINK_HINT,

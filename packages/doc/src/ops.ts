@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import type { MarkupDoc } from './document';
 import { MarkupError, type Actor, type MarkupNode, type NodeSpec, type StyleValue } from './schema';
-import { normalizeStyles, type Dialect } from './styles';
+import { clearShadowedLonghands, normalizeStyles, type Dialect } from './styles';
 import { createYNode, newId, type YNode } from './ynode';
 
 export type Move =
@@ -123,6 +123,17 @@ export function insertNodes(doc: MarkupDoc, parentId: string, specs: NodeSpec[],
   return ids;
 }
 
+/** Specs placed on a page root as artboards, left to right after the last one (a spec's own left/top wins). */
+export function insertArtboards(doc: MarkupDoc, rootId: string, specs: NodeSpec[]): string[] {
+  assertClones(doc, specs);
+  return specs.map((spec) => {
+    const own = spec.cloneOf ? { ...doc.requireNode(spec.cloneOf.nodeId).styles, ...spec.cloneOf.styles } : (spec.styles ?? {});
+    const place = { position: 'absolute', left: own.left ?? rightEdge(doc, rootId) + ARTBOARD_GAP, top: own.top ?? 0 };
+    const placed: NodeSpec = spec.cloneOf ? { ...spec, cloneOf: { ...spec.cloneOf, styles: { ...spec.cloneOf.styles, ...place } } } : { ...spec, styles: { ...own, ...place } };
+    return insertNodes(doc, rootId, [placed])[0]!;
+  });
+}
+
 export function replaceNode(doc: MarkupDoc, targetId: string, specs: NodeSpec[]): string[] {
   const target = doc.yNode(targetId);
   assertNotRoot(target);
@@ -143,6 +154,7 @@ export function updateStyles(doc: MarkupDoc, updates: StyleUpdate[], dialect: Di
       const { styles, ignored } = normalizeStyles(raw, { type, isArtboard: artboardOf(doc, id) === id }, dialect);
       if (ignored.length) ignoredStyles[id] = [...(ignoredStyles[id] ?? []), ...ignored];
       const map = stylesOf(node);
+      for (const key of Object.keys(clearShadowedLonghands((k) => map.has(k), styles))) map.delete(key);
       for (const [key, value] of Object.entries(styles)) {
         if (value === null || value === '') map.delete(key);
         else map.set(key, value);
@@ -209,13 +221,61 @@ export function deleteNodes(doc: MarkupDoc, ids: string[]): void {
     const node = doc.nodes.get(id);
     if (node) assertNotRoot(node);
   }
-  for (const id of ids) {
-    const node = doc.nodes.get(id);
-    if (!node) continue; // already removed with an ancestor in this batch
-    assertNotRoot(node);
-    detach(doc, id);
-    removeSubtree(doc, id);
+  // Nodes removed with an ancestor in this batch need no work of their own, as before.
+  const batch = new Set(ids.filter((id) => doc.nodes.has(id)));
+  const tops = [...batch].filter((id) => !hasAncestorIn(doc, id, batch));
+  // Detach per parent with one sibling scan, deleting from the end so earlier indices stay valid.
+  const byParent = new Map<string, string[]>();
+  for (const id of tops) {
+    const parentId = doc.yNode(id).get('parentId') as string | null;
+    if (!parentId) continue;
+    const group = byParent.get(parentId);
+    if (group) group.push(id);
+    else byParent.set(parentId, [id]);
   }
+  for (const [parentId, group] of byParent) {
+    const siblings = childrenOf(doc.yNode(parentId));
+    const indices = siblingIndices(siblings.toArray(), group).sort((x, y) => y - x);
+    for (let i = 0; i < indices.length; ) {
+      // A run of adjacent indices goes in one delete.
+      let start = indices[i]!;
+      let len = 1;
+      while (i + len < indices.length && indices[i + len] === start - 1) {
+        start--;
+        len++;
+      }
+      siblings.delete(start, len);
+      i += len;
+    }
+  }
+  for (const id of tops) removeSubtree(doc, id);
+}
+
+/** Index of each id's first occurrence among the siblings, skipping ids not there. */
+function siblingIndices(siblings: string[], ids: string[]): number[] {
+  if (ids.length === 1) {
+    const idx = siblings.indexOf(ids[0]!);
+    return idx >= 0 ? [idx] : [];
+  }
+  const first = new Map<string, number>();
+  siblings.forEach((id, i) => {
+    if (!first.has(id)) first.set(id, i);
+  });
+  const out: number[] = [];
+  for (const id of ids) {
+    const idx = first.get(id);
+    if (idx !== undefined) out.push(idx);
+  }
+  return out;
+}
+
+function hasAncestorIn(doc: MarkupDoc, id: string, set: Set<string>): boolean {
+  let parentId = doc.nodes.get(id)?.get('parentId') as string | null | undefined;
+  while (parentId) {
+    if (set.has(parentId)) return true;
+    parentId = doc.nodes.get(parentId)?.get('parentId') as string | null | undefined;
+  }
+  return false;
 }
 
 function removeSubtree(doc: MarkupDoc, id: string) {

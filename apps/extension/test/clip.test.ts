@@ -61,16 +61,18 @@ describe('root clip', () => {
     document.body.innerHTML = ROUNDED;
     const style = css(await captureExact([el('t')], fakeEnv({}), META));
     expect(style).toContain('clip-path:inset(0px 0px 0px 0px round 5px 5px 5px 5px)');
-    expect(style).not.toContain('background-color');
+    // The target is the snapshot root: its own background, no backdrop ahead of it.
+    expect(style.match(/background-color/g)).toHaveLength(1);
   });
 
   it('a rounded opaque card has no square backdrop behind its corners', async () => {
     document.body.innerHTML = `<div style="background-color:rgb(255, 255, 255)" data-rect="0 0 400 300"><div id="card" data-rect="10 10 200 100" style="background-color:rgb(13, 17, 23);border-top-left-radius:12px;border-top-right-radius:12px;border-bottom-right-radius:12px;border-bottom-left-radius:12px"></div></div>`;
-    expect(css(await captureExact([el('card')], fakeEnv({}), META))).not.toContain('background-color');
+    const style = css(await captureExact([el('card')], fakeEnv({}), META));
+    expect(style.match(/background-color:[^;]*/g)).toEqual(['background-color:rgb(13, 17, 23)']);
   });
 
-  it('a transparent target still gets the page backdrop', async () => {
+  it('a transparent target stays transparent: no page colour behind it', async () => {
     document.body.innerHTML = `<div style="background-color:rgb(13, 17, 23)" data-rect="0 0 400 300"><div id="txt" data-rect="10 10 200 100"></div></div>`;
-    expect(css(await captureExact([el('txt')], fakeEnv({}), META))).toContain('background-color:rgb(13, 17, 23)');
+    expect(css(await captureExact([el('txt')], fakeEnv({}), META))).not.toContain('background-color');
   });
 });

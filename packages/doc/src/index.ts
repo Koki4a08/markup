@@ -1,6 +1,6 @@
 export * from './schema';
 export { MarkupDoc } from './document';
-export { normalizeStyles, parseStyleAttr, camelCase, type Dialect } from './styles';
+export { normalizeStyles, orderStyles, isShorthandStyle, parseStyleAttr, camelCase, type Dialect } from './styles';
 export { parseHtml } from './html-import';
 export type { ArrangeItem, PageUpdate } from './pages';
 export type { Move, MoveResult, DuplicateResult, StyleUpdate } from './ops';
@@ -8,6 +8,8 @@ export { toJsx, toTailwindClasses, type JsxOptions } from './jsx-export';
 export { treeSummary, findNodes, parseColor, plainText, type FindQuery, type FindResult } from './query';
 export { resolveTokenValue, TOKEN_TYPES, type Token, type TokenType, type TokenEdit, type TokenQuery, type TokenResult } from './tokens';
 export { wildcard } from './wildcard';
+export { addFontFaces, fontFaces, fontsMap, splitFontFaces } from './fonts';
+export { addKeyframes, keyframeRules, keyframesMap, splitKeyframes } from './keyframes';
 export { ActorUndo, type LogEntry } from './history';
 export { runDocTool, type ToolContext } from './tools';
 export { MarkupLibrary, type LibraryItem } from './library';

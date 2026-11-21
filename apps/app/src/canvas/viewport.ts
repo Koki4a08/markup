@@ -15,6 +15,15 @@ export const MAX_ZOOM = 256;
 
 export const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
+/** The levels Ctrl/⌘ + and − step through. */
+export const ZOOM_STEPS = [0.02, 0.05, 0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 128, 256];
+
+/** The next zoom level above (direction 1) or below (-1) the current zoom. */
+export function stepZoom(zoom: number, direction: 1 | -1): number {
+  const next = direction > 0 ? ZOOM_STEPS.find((z) => z > zoom * 1.001) : [...ZOOM_STEPS].reverse().find((z) => z < zoom * 0.999);
+  return clampZoom(next ?? zoom);
+}
+
 export function screenToWorld(v: Viewport, p: Point): Point {
   return { x: (p.x - v.x) / v.zoom, y: (p.y - v.y) / v.zoom };
 }

@@ -1,13 +1,14 @@
 import type { Actor, ActorUndo, MarkupDoc, Styles } from '@markup/doc';
 import type { Command } from './keyboard';
-import type { Tool } from './canvas/tools';
-import { pasteIntoDoc, readClipboard } from './paste';
-import type { Point } from './canvas/viewport';
-import { copyAsCode, copyAsPng, exportNodes } from './export/actions';
-import { copyHtml, copyText } from './export/clipboard';
-import { nodesPayload, nodesToHtml } from './clipboard/nodes';
-import { nodeLink, pageLink } from '@markup/protocol';
-import { copyStyles, pasteStyles, removeFlex, reorder, ungroup } from './canvasOps';
+import type { Tool } from '../canvas/tools';
+import { pasteIntoDoc, readClipboard } from '../clipboard/paste';
+import type { Point } from '../canvas/viewport';
+import { copyAsCode, copyAsPng, exportNodes } from '../export/actions';
+import { copyHtml, copyText } from '../export/clipboard';
+import { nodesPayload, nodesToHtml } from '../clipboard/nodes';
+// The links module alone: the full protocol (zod schemas) loads with the agent bridge, after startup.
+import { nodeLink, pageLink } from '@markup/protocol/links';
+import { copyStyles, pasteStyles, removeFlex, reorder, ungroup } from '../canvas/canvasOps';
 
 export interface CommandContext {
   doc: MarkupDoc;
@@ -19,12 +20,16 @@ export interface CommandContext {
   setTool(tool: Tool): void;
   zoomToFit(): void;
   zoomTo(zoom: number): void;
+  /** One zoom level in or out, about the centre of the canvas. */
+  zoomStep?(direction: 1 | -1): void;
   startRename(id: string): void;
   collapseLayers(): void;
   /** Shows a short status message (copy and export results). */
   notify?(message: string): void;
   /** Centre of the visible canvas in world coordinates; where pasted artboards land. */
   viewportCenter?(): Point;
+  /** Captures the layer as the file's dashboard thumbnail and keeps it as the layer to capture from then on. */
+  setThumbnail?(id: string): Promise<string>;
 }
 
 /** Selected ids that still exist and are not page roots, in document order of their parent. */
@@ -128,6 +133,10 @@ export function runCommand(command: Command, ctx: CommandContext): void {
       return ctx.zoomToFit();
     case 'zoomTo100':
       return ctx.zoomTo(1);
+    case 'zoomIn':
+      return ctx.zoomStep?.(1);
+    case 'zoomOut':
+      return ctx.zoomStep?.(-1);
     case 'wrapInFrame':
       return wrap(ctx, 'frame');
     case 'wrapInFlex':
@@ -204,6 +213,12 @@ export function runCommand(command: Command, ctx: CommandContext): void {
         return ids.length ? '' : 'Nothing to paste.';
       });
       return;
+    case 'setThumbnail': {
+      const [id] = selected(ctx);
+      const set = ctx.setThumbnail;
+      if (id && set) report(ctx, 'Could not set the thumbnail', () => set(id));
+      return;
+    }
     case 'copyReact':
     case 'copyTailwind': {
       const ids = selected(ctx);

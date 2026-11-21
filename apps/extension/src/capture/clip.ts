@@ -103,12 +103,3 @@ export function rootClip(target: Element, env: ShapeEnv): Decl[] {
   const insets = [shape.rect.y - r.y, r.right - shape.rect.right, r.bottom - shape.rect.bottom, shape.rect.x - r.x].map((n) => pxs(Math.max(0, n)));
   return [['clip-path', `inset(${insets.join(' ')} round ${shape.radii.join(' ')})`]];
 }
-
-/** Whether the root needs the page colour behind the target: only when the target does not paint its own. */
-export function needsBackdrop(target: Element, env: ShapeEnv): boolean {
-  const cs = env.style(target);
-  const bg = get(cs, 'background-color');
-  const transparent = !bg || bg === 'transparent' || /^rgba\(.*,\s*0\)$/.test(bg.replace(/\s+/g, ' '));
-  const image = get(cs, 'background-image');
-  return transparent && (!image || image === 'none');
-}

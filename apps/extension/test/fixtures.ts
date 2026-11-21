@@ -11,6 +11,16 @@ export const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAA
 
 export const FIXTURES: Fixture[] = [
   {
+    name: 'collapsed content',
+    targets: ['t'],
+    html: `<div id="t" data-rect="0 0 400 200">
+      <details data-rect="0 0 400 40"><summary data-rect="0 0 400 40">Question one</summary><p data-rect="0 40 400 40">Hidden answer one</p>Loose hidden text</details>
+      <details open data-rect="0 40 400 80"><summary data-rect="0 40 400 40">Question two</summary><p data-rect="0 80 400 40">Shown answer two</p></details>
+      <div hidden="until-found" data-rect="0 120 400 0"><p data-rect="0 120 400 40">Hidden until found</p></div>
+      <div data-rect="0 120 400 0" style="content-visibility: hidden"><p data-rect="0 120 400 40">Hidden by content-visibility</p></div>
+    </div>`,
+  },
+  {
     name: 'flex row',
     targets: ['t'],
     html: `<div id="t" data-rect="0 0 200 50" style="display: flex; flex-direction: row; gap: 8px; padding: 4px; align-items: center; background-color: rgb(250, 250, 250)">

@@ -1,4 +1,4 @@
-import { needsBackdrop, rootClip } from './clip';
+import { rootClip } from './clip';
 import {
   attrs,
   backdrop,
@@ -15,21 +15,27 @@ import {
   readPseudo,
   renderedChildren,
   SKIP,
+  KEYFRAMES_ATTR,
   SNAPSHOT_ATTR,
   SNAPSHOT_MARKER,
   snapshotName,
   TARGET_GAP,
+  targetAsRoot,
   TOO_LARGE,
   visible,
   type CaptureLimits,
   type PseudoInfo,
 } from './dom';
 import type { CaptureEnv } from './env';
-import { backgroundDecls, ImageLoader, PLACEHOLDER_COLOR, PLACEHOLDER_NAME, screenImage } from './images';
+import { backgroundDecls, canvasPng, concat, ImageLoader, maskDecls, PLACEHOLDER_COLOR, PLACEHOLDER_NAME, screenImage } from './images';
+import { KeyframesRegistry, relativeMotion } from './motion';
+import { motionStyle } from './motionVars';
+import { memoStyles } from './styleMemo';
+import { SvgDefs } from './svgDefs';
 import {
   borders,
   boxDecls,
-  clips,
+  clippedAway,
   flexDecls,
   get,
   hasPadding,
@@ -60,17 +66,47 @@ interface Box {
 type Mode = { flow: true } | { flow: false; x: number; y: number };
 
 type Item = { el: Element } | { run: Node[] };
+type Pseudo = '::before' | '::after';
 
+const BASIC_SHAPE = /^(inset|circle|ellipse|polygon|path|rect|xywh)\(/i;
 
 class Serializer {
   readonly images: ImageLoader;
+  readonly keyframes: KeyframesRegistry;
+  readonly svgDefs: SvgDefs;
   private nodes = 0;
+  /** Computed style through the env, for renderedChildren. */
+  private readonly computed = (el: Element) => this.env.style(el);
 
   constructor(
     readonly env: CaptureEnv,
     readonly limits: Required<CaptureLimits>,
   ) {
     this.images = new ImageLoader(env, limits);
+    this.keyframes = env.keyframes ?? new KeyframesRegistry();
+    this.svgDefs = env.svgDefs ?? new SvgDefs();
+  }
+
+  /**
+   * What boxDecls leaves out of a layer's look: SVG filters and clip paths (copied along), shape clip paths, masks,
+   * gradient text, background blending, and the element's animations (relative to its measured position).
+   */
+  async effects(cs: CSSStyleDeclaration, owner: Element, pseudo?: Pseudo): Promise<Decl[]> {
+    const out: Decl[] = [];
+    for (const p of ['filter', 'clip-path'] as const) {
+      const v = get(cs, p);
+      if (!v || v === 'none') continue;
+      if (/url\(/i.test(v)) {
+        const kept = this.svgDefs.rewrite(p, v, owner);
+        if (kept) out.push([p, kept]);
+      } else if (p === 'clip-path' && BASIC_SHAPE.test(v)) out.push([p, v]);
+    }
+    if (get(cs, 'background-clip') === 'text' || get(cs, '-webkit-background-clip') === 'text') out.push(['background-clip', 'text'], ['-webkit-background-clip', 'text']);
+    const blend = get(cs, 'background-blend-mode');
+    if (blend && blend !== 'normal') out.push(['background-blend-mode', blend]);
+    out.push(...(await maskDecls(cs, this.images)));
+    out.push(...motionStyle(this.env, this.keyframes, owner, pseudo, cs, (records) => relativeMotion(records, cs)));
+    return out;
   }
 
   /** The element's border box in page coordinates, un-rotated when it carries a rotation. */
@@ -119,8 +155,9 @@ class Serializer {
     return [['width', px(box.w)], ['height', px(box.h)]];
   }
 
-  async frameDecls(box: Box, mode: Mode, cs: CSSStyleDeclaration): Promise<Decl[]> {
-    return [...this.place(box, mode, cs), ...this.size(box), ...boxDecls(cs), ...(await backgroundDecls(cs, this.images))];
+  async frameDecls(box: Box, mode: Mode, cs: CSSStyleDeclaration, owner: Element, pseudo?: Pseudo): Promise<Decl[]> {
+    const [background, effects] = await Promise.all([backgroundDecls(cs, this.images), this.effects(cs, owner, pseudo)]);
+    return [...this.place(box, mode, cs), ...this.size(box), ...boxDecls(cs), ...background, ...effects];
   }
 
   visible(_el: Element, cs: CSSStyleDeclaration): boolean {
@@ -133,9 +170,9 @@ class Serializer {
     if (++this.nodes > this.limits.maxNodes) throw new Error(TOO_LARGE);
     const cs = this.env.style(el);
     if (!this.visible(el, cs)) return '';
-    if (get(cs, 'display') === 'contents') return (await Promise.all(this.items(el).map((i) => this.item(i, el, cs, mode, null)))).join('');
+    if (get(cs, 'display') === 'contents') return concat(await Promise.all(this.items(el).map((i) => this.item(i, el, cs, mode, null))));
     const box = this.box(el, cs);
-    if ((box.w <= 0 || box.h <= 0) && clips(cs)) return '';
+    if (clippedAway(cs, box.w, box.h)) return '';
 
     switch (tag) {
       case 'img':
@@ -170,7 +207,7 @@ class Serializer {
       if (run.length) out.push({ run });
       run = [];
     };
-    for (const child of renderedChildren(el)) {
+    for (const child of renderedChildren(el, this.computed)) {
       if (isText(child)) {
         run.push(child);
         continue;
@@ -194,7 +231,7 @@ class Serializer {
     if (!INLINE.has(el.localName) || get(cs, 'display') !== 'inline') return false;
     if (el.localName === 'br') return true;
     if (isBoxy(cs) || hasPadding(cs)) return false;
-    for (const c of renderedChildren(el)) {
+    for (const c of renderedChildren(el, this.computed)) {
       if (isText(c)) continue;
       if (!isElement(c)) continue;
       const ccs = this.env.style(c);
@@ -220,7 +257,7 @@ class Serializer {
 
     const flex = this.flexOk(el, cs, items, pseudos);
     const childMode: Mode = flex ? { flow: true } : this.origin(box, cs);
-    const decls = await this.frameDecls(box, mode, cs);
+    const decls = await this.frameDecls(box, mode, cs, el);
     const [before, after] = pseudos;
     const children = await Promise.all([
       before ? this.pseudoNode(before, el, cs, box, childMode) : '',
@@ -230,7 +267,7 @@ class Serializer {
     if (flex) decls.push(...flexDecls(cs));
     // In a flex parent the frame is in flow; it still has to anchor its absolutely placed children.
     else if (mode.flow && children.some(Boolean)) decls.splice(0, 0, ['position', 'relative']);
-    return `<div${attrs(decls)}>${children.join('')}</div>`;
+    return `<div${attrs(decls)}>${concat(children)}</div>`;
   }
 
   item(item: Item, parent: Element, parentCs: CSSStyleDeclaration, mode: Mode, parentBox: Box | null): Promise<string> {
@@ -242,7 +279,7 @@ class Serializer {
   flexOk(el: Element, cs: CSSStyleDeclaration, items: Item[], pseudos: (PseudoInfo | null)[]): boolean {
     if (!/^(inline-)?flex$/.test(get(cs, 'display'))) return false;
     if (pseudos.some((p) => p?.absolute)) return false;
-    if (renderedChildren(el).filter(isElement).some((c) => this.skippedInFlow(c))) return false;
+    if (renderedChildren(el, this.computed).filter(isElement).some((c) => this.skippedInFlow(c))) return false;
     return items.every((i) => {
       if ('run' in i) return true;
       const c = this.env.style(i.el);
@@ -265,7 +302,7 @@ class Serializer {
     if (display === 'none' || display === 'contents' || /^(absolute|fixed)$/.test(get(cs, 'position'))) return false;
     if (!this.visible(el, cs)) return true;
     const r = this.env.rect(el);
-    return (r.width <= 0 || r.height <= 0) && clips(cs);
+    return clippedAway(cs, r.width, r.height);
   }
 
   // ── Text ──────────────────────────────────────────────────────────────────────────────────────────
@@ -292,7 +329,7 @@ class Serializer {
       const cs = this.env.style(n);
       if (!this.visible(n, cs)) continue;
       const name = INLINE.has(tag) ? tag : 'span';
-      out += `<${name}${attrs(inlineDecls(cs, base))}>${this.inlineHtml(renderedChildren(n), base)}</${name}>`;
+      out += `<${name}${attrs(inlineDecls(cs, base))}>${this.inlineHtml(renderedChildren(n, this.computed), base)}</${name}>`;
     }
     return out;
   }
@@ -332,10 +369,10 @@ class Serializer {
     const shifted = mode.flow && measured && Math.abs(measured.height - box.h) > 1;
     if (!isBoxy(cs) && !hasPadding(cs) && !shifted) {
       const at = mode.flow ? box : this.textBox(run, cs, box);
-      const decls: Decl[] = [...this.place(at, mode, cs), ['width', textWidth(at.w)], ...boxDecls(cs), ...textDecls(cs)];
+      const decls: Decl[] = [...this.place(at, mode, cs), ['width', textWidth(at.w)], ...boxDecls(cs), ...textDecls(cs), ...(await this.effects(cs, el))];
       return `<p${attrs(decls)}>${inner}</p>`;
     }
-    const decls = await this.frameDecls(box, mode, cs);
+    const decls = await this.frameDecls(box, mode, cs, el);
     if (mode.flow) decls.splice(0, 0, ['position', 'relative']);
     const at = this.textBox(run, cs, box);
     const p: Decl[] = [...this.place(at, this.origin(box, cs)), ['width', textWidth(at.w)], ...textDecls(cs)];
@@ -379,14 +416,15 @@ class Serializer {
   async pseudoNode(p: PseudoInfo, el: Element, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
     const at = this.pseudoBox(p, cs, box);
     const sized = at.w > 0 && at.h > 0;
+    const effects = await this.effects(p.cs, el, p.which);
     if (p.image) {
       const data = await this.images.get(p.image);
       if (!data || !sized) return '';
-      return `<img src="${data}"${attrs([...this.place(at, mode, p.cs), ...this.size(at), ...boxDecls(p.cs)])}>`;
+      return `<img src="${data}"${attrs([...this.place(at, mode, p.cs), ...this.size(at), ...boxDecls(p.cs), ...effects])}>`;
     }
     const text = escText(p.text.trim());
     if (!p.boxy) {
-      const decls: Decl[] = [...this.place(at, mode, p.cs), ...(at.w > 0 ? ([['width', textWidth(at.w)]] as Decl[]) : []), ...textDecls(p.cs)];
+      const decls: Decl[] = [...this.place(at, mode, p.cs), ...(at.w > 0 ? ([['width', textWidth(at.w)]] as Decl[]) : []), ...textDecls(p.cs), ...effects];
       return `<p${attrs(decls)}>${text}</p>`;
     }
     const decls: Decl[] = [
@@ -394,6 +432,7 @@ class Serializer {
       ...(sized ? this.size(at) : []),
       ...boxDecls(p.cs),
       ...(await backgroundDecls(p.cs, this.images)),
+      ...effects,
       ...(text ? [['display', 'flex'] as Decl, ...paddingDecls(p.cs)] : []),
     ];
     return `<div${attrs(decls)}>${text ? `<p${attrs([['flex-shrink', '0'], ...textDecls(p.cs)])}>${text}</p>` : ''}</div>`;
@@ -406,8 +445,8 @@ class Serializer {
     return `<div${attrs(decls, PLACEHOLDER_NAME)}></div>`;
   }
 
-  imageTag(data: string, el: Element, cs: CSSStyleDeclaration, box: Box, mode: Mode): string {
-    const decls: Decl[] = [...this.place(box, mode, cs), ...this.size(box), ...boxDecls(cs)];
+  async imageTag(data: string, el: Element, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
+    const decls: Decl[] = [...this.place(box, mode, cs), ...this.size(box), ...boxDecls(cs), ...(await this.effects(cs, el))];
     const fit = get(cs, 'object-fit');
     if (fit && fit !== 'fill') decls.push(['object-fit', fit]);
     const pos = get(cs, 'object-position');
@@ -427,45 +466,47 @@ class Serializer {
   }
 
   async canvas(el: HTMLCanvasElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
-    let data: string | null = null;
-    try {
-      data = el.toDataURL('image/png');
-    } catch {
-      // Tainted by cross-origin content.
+    // A shader recorded as a looping clip, else a frame recorded while it drew, else a readback now.
+    let data: string | null = this.images.admit(this.env.motionClip?.(el) ?? null) ?? this.images.admit(this.env.canvasFrame?.(el) ?? null);
+    if (!data) {
+      try {
+        data = this.images.admit(await canvasPng(el));
+      } catch {
+        // Tainted by cross-origin content.
+      }
     }
-    data = this.images.admit(data) ?? (await this.fromScreen(el));
+    data ??= await this.fromScreen(el);
     return data ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
   }
 
   async video(el: HTMLVideoElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
-    let data: string | null = null;
-    if (el.readyState >= 2 && el.videoWidth) {
+    let data: string | null = this.images.admit(this.env.motionClip?.(el) ?? null);
+    if (!data && el.readyState >= 2 && el.videoWidth) {
       try {
         const c = el.ownerDocument.createElement('canvas');
         c.width = el.videoWidth;
         c.height = el.videoHeight;
         c.getContext('2d')?.drawImage(el, 0, 0);
-        data = c.toDataURL('image/png');
+        data = this.images.admit(await canvasPng(c));
       } catch {
         data = null;
       }
     }
-    data = this.images.admit(data);
     if (!data && el.poster) data = await this.images.get(el.poster);
     if (!data) data = await this.fromScreen(el);
     return data ? this.imageTag(data, el, cs, box, mode) : this.placeholder(box, mode, cs);
   }
 
-  svg(el: SVGSVGElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): string {
+  async svg(el: SVGSVGElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
     const clone = cleanSvg(el, this.env, box.w, box.h);
-    const style = styleAttr([...this.place(box, mode, cs), ...this.size(box), ...boxDecls(cs).filter(([k]) => k !== 'overflow')]);
+    const style = styleAttr([...this.place(box, mode, cs), ...this.size(box), ...boxDecls(cs).filter(([k]) => k !== 'overflow'), ...(await this.effects(cs, el))]);
     if (style) clone.setAttribute('style', style);
     else clone.removeAttribute('style');
     return clone.outerHTML;
   }
 
   async field(el: HTMLInputElement, cs: CSSStyleDeclaration, box: Box, mode: Mode): Promise<string> {
-    const decls = await this.frameDecls(box, mode, cs);
+    const decls = await this.frameDecls(box, mode, cs, el);
     const f = fieldContent(el);
     if (f.kind === 'check') {
       if (!isBoxy(cs)) {
@@ -518,6 +559,8 @@ export async function capture(
 ): Promise<string> {
   const els = targets === 'page' ? [document.documentElement] : targets;
   if (els.length === 0) throw new Error('Nothing to capture');
+  env = memoStyles(env);
+  await env.loadMotions?.();
   const s = new Serializer(env, { ...DEFAULT_LIMITS, ...limits });
   const boxes = els.map((el) => s.box(el, env.style(el)));
   let left = 0;
@@ -528,18 +571,27 @@ export async function capture(
   });
   const parts = await Promise.all(els.map((el, i) => s.node(el, modes[i]!)));
   if (!parts.some(Boolean)) throw new Error('Nothing to capture: the selection is hidden or empty');
-  const width = Math.max(0, left - TARGET_GAP);
-  const height = Math.max(0, ...boxes.map((b) => b.h));
   const single = els.length === 1 && targets !== 'page';
   const first = els[0]!;
+  const paint: Decl[] = [
+    // Only a whole page gets the page colour behind it; a picked element keeps its own background, or none.
+    ...(targets === 'page' ? ([['background-color', backdrop(first, env)]] as Decl[]) : []),
+    ...(single ? rootClip(first, env) : []),
+  ];
+  const name = snapshotName(meta);
+  // Keyframes travel as an attribute (clipboard sanitisers drop <style>); the app stores them in the file.
+  const keyframes = s.keyframes.size ? ` ${KEYFRAMES_ATTR}="${escAttr(s.keyframes.css())}"` : '';
+  // The attribute marks the root too: Chrome's async clipboard sanitiser can drop the comment.
+  const marks = `${SNAPSHOT_ATTR}="v1"${keyframes} data-source="${escAttr(meta.url)}"`;
+  // A lone target is the snapshot itself; one that clips itself keeps the wrapper for the outer clip.
+  const ownClip = !/^(none)?$/.test(get(env.style(first), 'clip-path'));
+  const flat = single && !(ownClip && paint.some(([k]) => k === 'clip-path')) ? targetAsRoot(parts[0]!, marks, name, paint, s.svgDefs.html()) : null;
+  if (flat) return `${SNAPSHOT_MARKER}${flat}`;
   const root = styleAttr([
     ['position', 'relative'],
-    ['width', px(width)],
-    ['height', px(height)],
-    ...(single && !needsBackdrop(first, env) ? [] : ([['background-color', backdrop(first, env)]] as Decl[])),
-    ...(single ? rootClip(first, env) : []),
+    ['width', px(Math.max(0, left - TARGET_GAP))],
+    ['height', px(Math.max(0, ...boxes.map((b) => b.h)))],
+    ...paint,
   ]);
-  const name = snapshotName(meta);
-  // The attribute marks the root too: Chrome's async clipboard sanitiser can drop the comment.
-  return `${SNAPSHOT_MARKER}<div ${SNAPSHOT_ATTR}="v1" layer-name="${escAttr(name)}" data-source="${escAttr(meta.url)}" style="${root}">${parts.join('')}</div>`;
+  return `${SNAPSHOT_MARKER}<div ${marks} layer-name="${escAttr(name)}" style="${root}">${s.svgDefs.html()}${concat(parts)}</div>`;
 }

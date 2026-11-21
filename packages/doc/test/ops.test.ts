@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { MarkupDoc, type Actor } from '../src/index';
+import { ActorUndo, MarkupDoc, type Actor } from '../src/index';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
 
@@ -91,6 +91,22 @@ describe('node ops', () => {
     doc.deleteNodes(human, [card!]);
     expect(doc.nodeCount()).toBe(before - 4);
     expect(doc.requireNode(artboard).children).toEqual([]);
+  });
+
+  it('deleteNodes removes many siblings at once, with descendants listed before ancestors, and undoes as one step', () => {
+    const kids = doc.insertNodes(human, artboard, 'abcdefgh'.split('').map((name) => ({ type: 'frame' as const, name, children: [{ type: 'text' as const, text: name }] })));
+    const grandchild = doc.requireNode(kids[6]!).children[0]!;
+    const undo = new ActorUndo(doc, human);
+    const before = doc.nodeCount();
+    // b, c, d (a run), f, h, a grandchild of g before g itself, a duplicate and a missing id.
+    doc.deleteNodes(human, [kids[2]!, grandchild, kids[1]!, kids[3]!, kids[7]!, kids[5]!, kids[6]!, kids[2]!, 'missing']);
+    expect(doc.requireNode(artboard).children).toEqual([kids[0], kids[4]]);
+    expect(doc.nodeCount()).toBe(before - 12);
+    expect(doc.getNode(grandchild)).toBeUndefined();
+    expect(undo.undo()).toBe(true);
+    expect(doc.requireNode(artboard).children).toEqual(kids);
+    expect(doc.requireNode(kids[6]!).children).toEqual([grandchild]);
+    expect(doc.nodeCount()).toBe(before);
   });
 
   it('duplicateNodes maps every descendant', () => {

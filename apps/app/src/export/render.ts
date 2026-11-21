@@ -1,4 +1,3 @@
-import { toCanvas } from 'html-to-image';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -32,12 +31,26 @@ const RASTER: Record<string, { mimeType: string; quality?: number; opaque?: bool
 };
 const EXPORT_ACTOR: Actor = { id: 'export', kind: 'human', name: 'Export' };
 
+/**
+ * Exports show layers at rest: snapshot animations (fade-ins, loops) would otherwise restart when the host
+ * mounts and be rasterised at their first frame, which for an entrance is often fully transparent.
+ */
+function stillMotion(): void {
+  if (document.querySelector('style[data-markup-export-still]')) return;
+  const style = document.createElement('style');
+  style.setAttribute('data-markup-export-still', '');
+  style.textContent = '[data-markup-export-host] *,[data-markup-export-host] *::before,[data-markup-export-host] *::after{animation:none!important;transition:none!important}';
+  document.head.appendChild(style);
+}
+
 const sizeOf = (el: HTMLElement) => ({ width: el.offsetWidth, height: el.offsetHeight });
 
 /** Renders el to a canvas; the ratio is lowered when the output would exceed the browser's canvas size limit. */
 async function rasterize(el: HTMLElement, pixelRatio: number, backgroundColor?: string): Promise<HTMLCanvasElement> {
   const { width, height } = sizeOf(el);
   if (!width || !height) throw new MarkupError('INVALID_ARGUMENT', `Node ${el.getAttribute('data-node-id')} has no size to export.`);
+  // Loaded on first export, not at startup.
+  const { toCanvas } = await import('html-to-image');
   return toCanvas(el, { width, height, pixelRatio: clampPixelRatio(pixelRatio, { width, height }).pixelRatio, cacheBust: true, backgroundColor, style: NEUTRAL });
 }
 
@@ -202,6 +215,7 @@ export async function withRenderedNodes<T>(doc: MarkupDoc, nodeIds: string[], fn
   // The canvas only loads fonts for the page on screen; nodes on other pages or tabs need theirs too.
   const fonts = fontFacesUsed(doc, artboards);
   const stylesheets = ensureFontsLoaded([...new Set(fonts.map((f) => f.family))], knownLocalFonts());
+  stillMotion();
   const host = document.createElement('div');
   host.setAttribute('data-markup-export-host', '');
   host.setAttribute('aria-hidden', 'true');

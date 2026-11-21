@@ -133,6 +133,83 @@ describe('workspace', () => {
     await vi.waitFor(() => expect(library.get(id)!.thumbnail).toBe('data:image/png;base64,AAA'));
   });
 
+  it('restore shows the saved active tab first and loads the rest in the background, in saved order', async () => {
+    const gates = new Map<string, () => void>();
+    const { workspace, addFile } = memoryWorkspace({
+      beforeOpen: (fileId) => (gates.has(fileId) || fileId === activeId ? Promise.resolve() : new Promise<void>((r) => gates.set(fileId, r))),
+    });
+    const [a, b, c] = [addFile('A'), addFile('B'), addFile('C')];
+    const activeId = b;
+    const revealed: string[] = [];
+    workspace.on('reveal', (id) => revealed.push(id));
+    const { done } = await workspace.restore([a, b, c], b);
+    expect(workspace.tabs().map((t) => t.fileId)).toEqual([b]);
+    // Finish out of order: C before A.
+    await vi.waitFor(() => expect(gates.size).toBe(2));
+    gates.get(c)!();
+    await vi.waitFor(() => expect(workspace.tabs().map((t) => t.fileId)).toEqual([b, c]));
+    gates.get(a)!();
+    await done;
+    expect(workspace.tabs()).toEqual([
+      { fileId: a, name: 'A', active: false },
+      { fileId: b, name: 'B', active: true },
+      { fileId: c, name: 'C', active: false },
+    ]);
+    expect(revealed).toEqual([b]);
+  });
+
+  it('restore without a saved active tab leaves the last one in front', async () => {
+    const { workspace, addFile } = memoryWorkspace();
+    const ids = [addFile('A'), addFile('B'), addFile('C')];
+    const { done } = await workspace.restore(ids);
+    await done;
+    expect(workspace.tabs().map((t) => [t.fileId, t.active])).toEqual([
+      [ids[0], false],
+      [ids[1], false],
+      [ids[2], true],
+    ]);
+  });
+
+  it('restore falls back to the last tab that opened when the front one fails', async () => {
+    const { workspace, addFile, store } = memoryWorkspace();
+    const ids = [addFile('A'), addFile('B'), addFile('C')];
+    store.delete(ids[2]!);
+    await workspace.restore(ids, ids[2]);
+    expect(workspace.tabs().map((t) => [t.fileId, t.active])).toEqual([
+      [ids[0], false],
+      [ids[1], true],
+    ]);
+  });
+
+  it('closing the front tab while restore loads the rest keeps the dashboard', async () => {
+    let release: () => void = () => {};
+    const { workspace, addFile } = memoryWorkspace({ beforeOpen: (fileId) => (fileId === a ? new Promise<void>((r) => (release = r)) : Promise.resolve()) });
+    const a = addFile('A');
+    const b = addFile('B');
+    const { done } = await workspace.restore([a, b], b);
+    workspace.close(b);
+    release();
+    await done;
+    expect(workspace.tabs()).toEqual([{ fileId: a, name: 'A', active: false }]);
+    expect(workspace.activeFileId()).toBeNull();
+  });
+
+  it('opening a file that restore is still loading brings it to the front', async () => {
+    let release: () => void = () => {};
+    const { workspace, addFile } = memoryWorkspace({ beforeOpen: (fileId) => (fileId === a ? new Promise<void>((r) => (release = r)) : Promise.resolve()) });
+    const a = addFile('A');
+    const b = addFile('B');
+    const { done } = await workspace.restore([a, b], b);
+    const opening = workspace.open(a);
+    release();
+    await opening;
+    await done;
+    expect(workspace.tabs().map((t) => [t.fileId, t.active])).toEqual([
+      [a, true],
+      [b, false],
+    ]);
+  });
+
   it('first run imports the foundation file', async () => {
     const library = new MarkupLibrary();
     await importFoundationFile(library, { lastFileId: 'f1', readName: async (id) => (id === 'f1' ? 'My design' : null) });

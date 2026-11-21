@@ -28,7 +28,7 @@ describe('captureAndCopy', () => {
     await done;
     const item = write.mock.calls[0]![0][0]!.items;
     const html = await (await item['text/html']!).text();
-    expect(html).toMatch(/^<!--markup:snapshot v1--><div data-markup-snapshot="v1" layer-name="Acme"/);
+    expect(html).toMatch(/^<!--markup:snapshot v1--><div data-markup-snapshot="v1"[^>]* layer-name="Acme"/);
     expect(await (await item['text/plain']!).text()).toBe(`Acme\n${location.href}`);
   });
 

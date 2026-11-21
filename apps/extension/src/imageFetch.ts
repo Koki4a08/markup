@@ -8,6 +8,15 @@ export function isTrustedSender(sender: { id?: string; tab?: unknown } | undefin
   return !!sender && sender.id === extensionId && !!sender.tab;
 }
 
+/** Native base64 (Uint8Array.prototype.toBase64) where the engine has it, else btoa over byte chunks. */
+export function base64(bytes: Uint8Array): string {
+  const native = (bytes as Uint8Array & { toBase64?: () => string }).toBase64;
+  if (typeof native === 'function') return native.call(bytes);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 export async function fetchImage(
   url: string,
   fetchImpl: FetchLike = fetch,
@@ -55,9 +64,7 @@ export async function fetchImage(
       bytes.set(c, offset);
       offset += c.byteLength;
     }
-    let bin = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { dataUrl: `data:${type};base64,${btoa(bin)}` };
+    return { dataUrl: `data:${type};base64,${base64(bytes)}` };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   } finally {

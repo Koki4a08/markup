@@ -1,7 +1,8 @@
 import DOMPurify from 'dompurify';
-import { parseHtml, type Actor, type MarkupDoc, type NodeSpec, type Styles } from '@markup/doc';
-import type { Point } from './canvas/viewport';
-import { NODES_ATTR, NODES_MARKER } from './clipboard/nodes';
+import { addFontFaces, addKeyframes, parseHtml, type Actor, type MarkupDoc, type NodeSpec, type Styles } from '@markup/doc';
+import type { Point } from '../canvas/viewport';
+import { DEFS_ATTR, NODES_ATTR, NODES_MARKER } from './nodes';
+import { allowSmil, SMIL_ATTRS, SMIL_TAGS } from '../canvas/smil';
 
 export interface PasteData {
   html?: string;
@@ -22,6 +23,10 @@ export const SNAPSHOT_MARKER = '<!--markup:snapshot v1-->';
 export const SNAPSHOT_ATTR = 'data-markup-snapshot';
 /** On an exact snapshot root: the payload is the page's own structure and CSS, parsed in the permissive dialect. */
 export const DIALECT_ATTR = 'data-markup-dialect';
+/** On a snapshot root: the page's web fonts as @font-face rules with inlined files (stored in the file on paste). */
+export const FONTS_ATTR = 'data-markup-fonts';
+/** On a snapshot root: the @keyframes its layers' animations use (stored in the file on paste). */
+export const KEYFRAMES_ATTR = 'data-markup-keyframes';
 export const HEIC_MESSAGE = 'HEIC images are not supported in this browser.';
 const ARTBOARD_GAP = 80;
 const MAX_IMAGE_SIDE = 2000;
@@ -40,36 +45,40 @@ const purifier = DOMPurify(window);
 const SAFE_URL = /^(https?:|data:image\/(png|jpe?g|gif|webp|avif)[;,])/i;
 const BAD_VALUE = /javascript:|vbscript:|expression\(|-moz-binding|behavior\s*:|@import|image-set\(|\\/i;
 const CSS_URL = /url\(\s*(['"]?)(.*?)\1\s*\)/gi;
+/** A snapshot's SVG filter or clip path, carried in its hidden "SVG effects" layer. */
+const SVG_REF = /^#[A-Za-z_][\w-]*$/;
 
 /** Splits a style attribute on top-level semicolons (data URLs and quoted strings contain their own). */
 function declarations(style: string): string[] {
   const out: string[] = [];
   let depth = 0;
   let quote = '';
-  let cur = '';
-  for (const ch of style) {
+  let start = 0;
+  // Every character tested is ASCII, so walking UTF-16 units and slicing matches a code-point walk.
+  for (let i = 0; i < style.length; i++) {
+    const ch = style[i]!;
     if (quote) {
       if (ch === quote) quote = '';
     } else if (ch === "'" || ch === '"') quote = ch;
     else if (ch === '(') depth++;
     else if (ch === ')') depth = Math.max(0, depth - 1);
     else if (ch === ';' && depth === 0) {
-      out.push(cur);
-      cur = '';
-      continue;
+      out.push(style.slice(start, i));
+      start = i + 1;
     }
-    cur += ch;
   }
-  out.push(cur);
+  out.push(style.slice(start));
   return out;
 }
 
 /** Drops Office cruft and anything that can run script or load a non-image, non-http resource. */
 function safeDeclaration(d: string): boolean {
   if (!d.trim() || /^\s*-?mso-/i.test(d) || BAD_VALUE.test(d)) return false;
-  for (const m of d.matchAll(CSS_URL)) if (!SAFE_URL.test(m[2]!.trim())) return false;
+  for (const m of d.matchAll(CSS_URL)) if (!SAFE_URL.test(m[2]!.trim()) && !SVG_REF.test(m[2]!.trim())) return false;
   return !/url\(/i.test(d.replace(CSS_URL, ''));
 }
+
+allowSmil(purifier);
 
 purifier.addHook('uponSanitizeAttribute', (_node, data) => {
   if (data.attrName === 'style') data.attrValue = declarations(data.attrValue).filter(safeDeclaration).join(';');
@@ -77,9 +86,15 @@ purifier.addHook('uponSanitizeAttribute', (_node, data) => {
 
 /** Sanitises pasted HTML and strips Office/Docs cruft; returns the cleaned body markup. */
 export function cleanHtml(html: string): string {
+  return cleanBody(html).innerHTML;
+}
+
+/** The cleaned markup as a parsed body, so callers can inspect it without parsing it again. */
+function cleanBody(html: string): HTMLElement {
   const safe = purifier.sanitize(html, {
     FORBID_TAGS: ['style', 'meta', 'script', 'iframe', 'object', 'embed', 'link', 'o:p'],
-    ADD_ATTR: ['layer-name', 'data-source', SNAPSHOT_ATTR, DIALECT_ATTR],
+    ADD_TAGS: SMIL_TAGS,
+    ADD_ATTR: ['layer-name', 'data-source', SNAPSHOT_ATTR, DIALECT_ATTR, ...SMIL_ATTRS],
     ALLOW_DATA_ATTR: true,
   });
   const body = new DOMParser().parseFromString(`<body>${safe}</body>`, 'text/html').body;
@@ -89,10 +104,10 @@ export function cleanHtml(html: string): string {
     if (!SAFE_URL.test((img.getAttribute('src') ?? '').trim())) img.remove();
   });
   body.querySelectorAll('[style=""]').forEach((el) => el.removeAttribute('style'));
-  return body.innerHTML;
+  return body;
 }
 
-const cleanSvg = (svg: string) => purifier.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });
+const cleanSvg = (svg: string) => purifier.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: SMIL_TAGS, ADD_ATTR: SMIL_ATTRS });
 
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -148,18 +163,30 @@ async function imageSpec(file: File): Promise<NodeSpec> {
 }
 
 /** Whether a top-level div of the cleaned markup carries the snapshot attribute, and whether one asks for the `any` dialect. */
-function snapshotRoots(cleaned: string): { snapshot: boolean; any: boolean } {
-  const body = new DOMParser().parseFromString(`<body>${cleaned}</body>`, 'text/html').body;
+function snapshotRoots(body: HTMLElement): { snapshot: boolean; any: boolean; fonts: string; keyframes: string } {
   const roots = Array.from(body.children).filter((el) => el.localName === 'div' && el.hasAttribute(SNAPSHOT_ATTR));
-  return { snapshot: roots.length > 0, any: roots.some((el) => el.getAttribute(DIALECT_ATTR) === 'any') };
+  const take = (attr: string) => roots.map((el) => el.getAttribute(attr) ?? '').filter(Boolean).join('\n');
+  const fonts = take(FONTS_ATTR);
+  const keyframes = take(KEYFRAMES_ATTR);
+  // Fonts and keyframes travel separately (into the file's stores), never as a layer attribute.
+  for (const el of roots) {
+    el.removeAttribute(FONTS_ATTR);
+    el.removeAttribute(KEYFRAMES_ATTR);
+  }
+  return { snapshot: roots.length > 0, any: roots.some((el) => el.getAttribute(DIALECT_ATTR) === 'any'), fonts, keyframes };
 }
 
-/** The layers of a Markup copy (Copy, ⌘C on the canvas): the root div's children, or null when the HTML is not one. */
-function markupNodes(cleaned: string, raw: string): NodeSpec[] | null {
-  const body = new DOMParser().parseFromString(`<body>${cleaned}</body>`, 'text/html').body;
+/**
+ * The layers of a Markup copy (Copy, ⌘C on the canvas): the root div's children, with the fonts and motion rules
+ * the source file gave them; null when the HTML is not one.
+ */
+function markupNodes(body: HTMLElement, cleaned: string, raw: string, fileId: string): { specs: NodeSpec[]; fonts: string; keyframes: string } | null {
   const root = Array.from(body.children).find((el) => el.localName === 'div' && el.hasAttribute(NODES_ATTR));
-  if (!root) return raw.includes(NODES_MARKER) ? parseHtml(cleaned, { dialect: 'any' }).specs : null;
-  return parseHtml(root.innerHTML, { dialect: 'any' }).specs;
+  if (!root) return raw.includes(NODES_MARKER) ? { specs: parseHtml(cleaned, { dialect: 'any' }).specs, fonts: '', keyframes: '' } : null;
+  const specs = parseHtml(root.innerHTML, { dialect: 'any' }).specs;
+  // Within the same file the copied layers' SVG definitions are still there: the added layer is not needed.
+  if (root.hasAttribute(DEFS_ATTR) && root.getAttribute('data-source-file') === fileId) specs.pop();
+  return { specs, fonts: root.getAttribute(FONTS_ATTR) ?? '', keyframes: root.getAttribute(KEYFRAMES_ATTR) ?? '' };
 }
 
 interface Specs {
@@ -167,22 +194,28 @@ interface Specs {
   snapshot: boolean;
   /** Layers copied from Markup: pasted where they belong rather than wrapped. */
   nodes?: boolean;
+  /** Web fonts a page snapshot brought along (@font-face rules with inlined files). */
+  fonts?: string;
+  /** The @keyframes a page snapshot's animations use. */
+  keyframes?: string;
 }
 
 /** Everything the clipboard holds, as node specs, plus whether it is a snapshot payload. */
-async function toSpecs(data: PasteData): Promise<Specs> {
+async function toSpecs(data: PasteData, fileId: string): Promise<Specs> {
   const images = (data.files ?? []).filter((f) => IMAGE_TYPES.test(f.type) || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(f.name));
   if (images.length) return { specs: await Promise.all(images.map(imageSpec)), snapshot: false };
 
   const html = data.html?.trim();
   if (html) {
-    const cleaned = cleanHtml(html);
-    const copied = markupNodes(cleaned, html);
-    if (copied?.length) return { specs: copied, snapshot: false, nodes: true };
-    const roots = snapshotRoots(cleaned);
+    // One sanitise and one parse; the checks below read the same body instead of parsing the markup again.
+    const body = cleanBody(html);
+    const cleaned = body.innerHTML;
+    const copied = markupNodes(body, cleaned, html, fileId);
+    if (copied?.specs.length) return { specs: copied.specs, snapshot: false, nodes: true, fonts: copied.fonts, keyframes: copied.keyframes };
+    const roots = snapshotRoots(body);
     const snapshot = html.includes(SNAPSHOT_MARKER) || roots.snapshot;
-    const { specs } = parseHtml(cleaned, { dialect: roots.any ? 'any' : 'strict' });
-    if (specs.length) return { specs, snapshot };
+    const { specs } = parseHtml(body.innerHTML, { dialect: roots.any ? 'any' : 'strict' });
+    if (specs.length) return { specs, snapshot, fonts: roots.fonts, keyframes: roots.keyframes };
   }
 
   const text = data.text?.trim();
@@ -233,7 +266,11 @@ const POSITION_KEYS = ['position', 'left', 'top', 'width', 'height'] as const;
  * layers created. Rejects with a user-facing message when the content cannot be used (HEIC without decoder).
  */
 export async function pasteIntoDoc(doc: MarkupDoc, actor: Actor, data: PasteData, target: PasteTarget): Promise<string[]> {
-  const { specs, snapshot, nodes } = await toSpecs(data);
+  const { specs, snapshot, nodes, fonts, keyframes } = await toSpecs(data, doc.fileId);
+  // The page's own typefaces first, so the pasted text lays out with them from its first render; its
+  // keyframes too, so the layers' animations start with them.
+  if (fonts) addFontFaces(doc, fonts);
+  if (keyframes) addKeyframes(doc, keyframes);
   if (specs.length === 0) return [];
   const mode = target.mode ?? 'paste';
   const selected = target.selection.filter((id) => {

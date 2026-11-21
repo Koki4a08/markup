@@ -37,7 +37,8 @@ export function CommentsPanel({ activePageId, filter, onFilter, selectedId, onSe
       sortDirection: filter.sort === 'page' ? 'asc' : 'desc',
       limit: 200,
     });
-    return found.flatMap((s) => threads.find((t) => t.id === s.id) ?? []);
+    const byId = new Map(threads.map((t) => [t.id, t]));
+    return found.flatMap((s) => byId.get(s.id) ?? []);
   }, [doc, threads, filter, activePageId, actor.id]);
 
   const pageName = (id: string) => {

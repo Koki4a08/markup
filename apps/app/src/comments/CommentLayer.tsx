@@ -1,6 +1,7 @@
 import { useLayoutEffect, useState, type RefObject } from 'react';
-import { worldToScreen, type Viewport } from '../canvas/viewport';
+import { worldToScreen, type Point } from '../canvas/viewport';
 import { useDocTick } from '../canvas/SelectionOverlay';
+import { useStore, useTick, type TickStore, type ViewportStore } from '../canvas/store';
 import { icons } from '../panels/icons';
 import { useDoc } from '../store/DocProvider';
 import { anchorWorld } from './anchor';
@@ -10,12 +11,12 @@ import { ThreadPopover } from './ThreadPopover';
 
 interface Props {
   canvasRef: RefObject<HTMLDivElement | null>;
-  viewport: Viewport;
+  viewport: ViewportStore;
   pageId: string;
   filter: CommentFilter;
   selectedId: string | null;
   draft: Draft | null;
-  dragTick: number;
+  dragTick: TickStore;
   onSelect(id: string | null): void;
   onCancelDraft(): void;
   onCreate(draft: Draft, body: string): void;
@@ -31,33 +32,48 @@ interface Placed {
 const POPOVER_WIDTH = 320;
 
 /** Screen-space pins for the page threads, plus the open thread popover or the draft composer. */
-export function CommentLayer({ canvasRef, viewport, pageId, filter, selectedId, draft, dragTick, onSelect, onCancelDraft, onCreate }: Props) {
+export function CommentLayer({ canvasRef, viewport: viewportStore, pageId, filter, selectedId, draft, dragTick: dragStore, onSelect, onCancelDraft, onCreate }: Props) {
   const { doc, actor } = useDoc();
   const tick = useDocTick();
+  const viewport = useStore(viewportStore);
+  const dragTick = useTick(dragStore);
   const all = useThreads();
   const seen = useSeen(doc.fileId);
-  const [placed, setPlaced] = useState<Placed[]>([]);
-  const [draftAt, setDraftAt] = useState<{ x: number; y: number } | null>(null);
+  // Pin anchors in world space: measured when threads, the document or a drag change, not on pan or zoom.
+  const [anchors, setAnchors] = useState<Placed[]>([]);
+  const [draftWorld, setDraftWorld] = useState<Point | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    setCanvasWidth(canvas.getBoundingClientRect().width);
+    const measure = () => setCanvasWidth(canvas.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [canvasRef]);
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const v = viewportStore.get();
     // Pin numbers follow creation order on the page, so filtering never renumbers them.
     const onPage = all.filter((t) => t.pageId === pageId).sort((a, b) => a.createdAt - b.createdAt);
     const next: Placed[] = [];
     onPage.forEach((t, i) => {
       if (!pinVisible(t, filter)) return;
-      const w = anchorWorld(canvas, t, viewport);
+      const w = anchorWorld(canvas, t, v);
       if (!w) return;
-      const p = worldToScreen(viewport, w);
-      next.push({ id: t.id, n: i + 1, x: p.x, y: p.y });
+      next.push({ id: t.id, n: i + 1, x: w.x, y: w.y });
     });
-    setPlaced(next);
-    const dw = draft ? anchorWorld(canvas, draft, viewport) : null;
-    setDraftAt(dw && worldToScreen(viewport, dw));
-  }, [canvasRef, all, filter, viewport, pageId, draft, tick, dragTick]);
+    setAnchors(next);
+    setDraftWorld(draft ? anchorWorld(canvas, draft, v) : null);
+  }, [canvasRef, all, filter, viewportStore, pageId, draft, tick, dragTick]);
+
+  const placed = anchors.map((a) => ({ ...a, ...worldToScreen(viewport, a) }));
+  const draftAt = draftWorld && worldToScreen(viewport, draftWorld);
 
   const selected = selectedId ? all.find((t) => t.id === selectedId) : undefined;
   const selectedPin = selected && placed.find((p) => p.id === selected.id);

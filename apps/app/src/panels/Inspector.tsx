@@ -1,22 +1,21 @@
-import { useEffect, useState } from 'react';
-import type { MarkupNode, Styles, StyleValue } from '@markup/doc';
-import { icons } from './icons';
-import { ColorField, common, MIXED, Section, SelectField, TextField, type FieldValue } from './fields/fields';
+import { memo, useEffect, useState } from 'react';
+import { resolveTokenValue, type MarkupNode, type Styles, type StyleValue } from '@markup/doc';
+import { glyphs, icons } from './icons';
+import { common, MIXED, Section, SegmentedField, SelectField, type FieldValue } from './fields/fields';
+import { ColorField, TextField } from './previewFields';
+import { BorderSection, FiltersSection, OutlineSection, ShadowSection } from './EffectSections';
+import { SelectionColors } from './SelectionColors';
+import { useSubtreeTheme } from './selectionTheme';
 import { useDoc } from '../store/DocProvider';
-import { useNodes } from '../store/hooks';
-import { useSelection } from '../selection';
+import { useDeep, useNodes } from '../store/hooks';
+import { useSelection } from '../canvas/selection';
 import { ExportSection } from '../export/ExportSection';
+import { InlineRename } from '../ui/InlineRename';
+import { isPreviewing, previewStyles, useLiveStyles } from '../canvas/preview';
 import { localFontsGranted, requestLocalFonts } from '../fonts/localFonts';
-
-/** Style keys owned by a dedicated section; everything else lands in Other styles. */
-const OWNED = new Set([
-  'display', 'flexDirection', 'gap', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'padding', 'alignItems', 'justifyContent', 'flexWrap',
-  'width', 'height', 'flex', 'alignSelf',
-  'backgroundColor', 'opacity',
-  'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textAlign', 'color',
-  'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius',
-  'position', 'left', 'top',
-]);
+import { stripInline, textStyles, weightValue } from './textStyles';
+import { resolveConflicts } from './conflicts';
+import { canvasNodeElement } from '../canvas/registry';
 
 const SIDES = ['Top', 'Right', 'Bottom', 'Left'] as const;
 
@@ -30,52 +29,135 @@ function paddingSide(s: Styles, side: (typeof SIDES)[number]): StyleValue | unde
   return { Top: t, Right: r, Bottom: b, Left: l }[side];
 }
 
+/** Background colour, falling back to a `background` shorthand that is only a colour. */
+function backgroundOf(n: MarkupNode): StyleValue | undefined {
+  const { backgroundColor, background } = n.styles;
+  if (backgroundColor !== undefined) return backgroundColor;
+  if (typeof background !== 'string' || /(url|gradient|image)\(|\//i.test(background)) return undefined;
+  return background.trim().split(/\s+(?![^(]*\))/).length === 1 ? background.trim() : undefined;
+}
+
+/** Gap, falling back to equal row and column gaps (captured pages write the longhands). */
+function gapOf(n: MarkupNode): StyleValue | undefined {
+  const { gap, rowGap, columnGap } = n.styles;
+  if (gap !== undefined) return gap;
+  return rowGap !== undefined && rowGap === columnGap ? rowGap : undefined;
+}
+
+const isFlexDisplay = (v: StyleValue | undefined | typeof MIXED) => typeof v === 'string' && /^(inline-)?flex$/.test(v.trim());
+const pxOf = (v: StyleValue | undefined): number | undefined => {
+  if (typeof v === 'number') return v;
+  const m = typeof v === 'string' ? /^(-?\d+(?:\.\d+)?)(px)?$/.exec(v.trim()) : null;
+  return m ? Number(m[1]) : undefined;
+};
+
+/** A bare line height is a multiple of the font size; one too big to mean that (24) is taken as px. */
+const lineHeightValue = (v: string): StyleValue | null => (!v ? null : /^\d+(\.\d+)?$/.test(v) && Number(v) >= 5 ? `${v}px` : v);
+
 type Sizing = 'fixed' | 'fill' | 'fit';
 
 function sizingOf(node: MarkupNode, parent: MarkupNode | undefined, dim: 'width' | 'height'): Sizing {
   const v = node.styles[dim];
   if (v === 'fit-content') return 'fit';
-  const rowParent = parent?.styles.display === 'flex' && String(parent.styles.flexDirection ?? 'row').startsWith('row');
+  const rowParent = isFlexDisplay(parent?.styles.display) && String(parent!.styles.flexDirection ?? 'row').startsWith('row');
   const mainAxis = (dim === 'width') === rowParent;
-  if (parent?.styles.display === 'flex' && ((mainAxis && node.styles.flex !== undefined) || (!mainAxis && node.styles.alignSelf === 'stretch'))) return 'fill';
+  const grows = node.styles.flex !== undefined || Number(node.styles.flexGrow ?? 0) > 0;
+  if (isFlexDisplay(parent?.styles.display) && ((mainAxis && grows) || (!mainAxis && node.styles.alignSelf === 'stretch'))) return 'fill';
   if (v === '100%') return 'fill';
   return 'fixed';
 }
 
-export function Inspector() {
+/** No props: memoized so the right panel's own re-renders (tab badge, resizer) skip it. */
+export const Inspector = memo(function Inspector() {
   const { doc, actor } = useDoc();
   const selection = useSelection();
   const nodes = useNodes(selection.ids);
   const parents = useNodes(nodes.map((n) => n.parentId ?? '').filter(Boolean));
+  const live = useLiveStyles();
+  // Swatches resolve var(--token) values, so token edits must re-render the fields.
+  const tokens = useDeep(doc.ydoc.getArray('tokens'), () => doc.getTokens(), [doc]);
+  const theme = useSubtreeTheme(selection.ids, tokens);
   if (nodes.length === 0) {
     return (
       <div className="inspector-body">
-        <p className="empty-hint">Select a layer to edit its styles.</p>
+        <div className="panel-empty">
+          <span className="panel-empty-icon">{icons.move}</span>
+          <p className="empty-hint">Select a layer to edit its styles.</p>
+          <p className="panel-empty-text">Click a layer on the canvas or in Layers. Shift-click adds to the selection.</p>
+        </div>
       </div>
     );
   }
-  const ids = nodes.map((n) => n.id);
   const parentOf = (n: MarkupNode) => parents.find((p) => p.id === n.parentId);
-  const value = (key: string): FieldValue => common(nodes.map((n) => n.styles[key]));
-  const set = (styles: Record<string, StyleValue | null>) => doc.updateStyles(actor, [{ nodeIds: ids, styles }]);
-  // Free-form edits: a pasted exact snapshot carries margins, grid and inline display that must stay editable.
-  const setAny = (styles: Record<string, StyleValue | null>) => doc.updateStyles(actor, [{ nodeIds: ids, styles }], undefined, { dialect: 'any' });
+  // While a canvas gesture (a resize) runs, fields mirror its live values.
+  const value = (key: string): FieldValue => common(nodes.map((n) => (live[n.id] && key in live[n.id]! ? (live[n.id]![key] ?? undefined) : n.styles[key])));
+  const frames = nodes.filter((n) => n.type === 'frame');
+  /**
+   * Writes one edit per node, each made to show over what that node already stores (see resolveConflicts), as one
+   * history entry. Inside runPreview (a field being typed or scrubbed) writes become canvas previews instead.
+   */
+  const write = (targets: MarkupNode[], editFor: (n: MarkupNode) => Record<string, StyleValue | null>) => {
+    const updates = targets.map((n) => {
+      const el = canvasNodeElement(n.id);
+      return { nodeIds: [n.id], styles: resolveConflicts(n.styles, editFor(n), el ? getComputedStyle(el) : null) };
+    });
+    if (isPreviewing()) for (const u of updates) previewStyles(u.nodeIds, u.styles);
+    else if (updates.length) doc.updateStyles(actor, updates);
+  };
+  const set = (styles: Record<string, StyleValue | null>) => write(nodes, () => styles);
+  // Layout properties belong to frames: in a mixed selection, text and images keep their own flow.
+  const setLayout = (styles: Record<string, StyleValue | null>) => write(frames, () => styles);
+  // Text properties cover the whole layer: inline runs lose their own value and an inherited text fill gives way.
+  const setText = (styles: Record<string, StyleValue | null>) => {
+    if (isPreviewing()) return write(nodes, (n) => textStyles(doc, n, styles));
+    doc.batch(actor, `Updated text styles on ${nodes.length} node${nodes.length === 1 ? '' : 's'}`, () => {
+      write(nodes, (n) => textStyles(doc, n, styles));
+      for (const n of nodes) {
+        const html = n.type === 'text' ? stripInline(n.text ?? '', Object.keys(styles).filter((k) => styles[k] !== null)) : null;
+        if (html !== null) doc.setText(actor, [{ nodeId: n.id, html }]);
+      }
+    });
+  };
+  /** A typed W or H is a fixed size: it ends Fill sizing on that axis and lifts a min/max that would clamp it. */
+  const setDim = (dim: 'width' | 'height', v: string) =>
+    write(nodes, (n) => {
+      const styles: Record<string, StyleValue | null> = { [dim]: v || null };
+      if (!v) return styles;
+      const parent = parentOf(n);
+      const flexParent = isFlexDisplay(parent?.styles.display);
+      const mainAxis = flexParent && (dim === 'width') === String(parent!.styles.flexDirection ?? 'row').startsWith('row');
+      if (mainAxis && (n.styles.flex !== undefined || Number(n.styles.flexGrow ?? 0) > 0)) Object.assign(styles, { flex: null, flexGrow: null, flexBasis: null });
+      if (flexParent && !mainAxis && n.styles.alignSelf === 'stretch') styles.alignSelf = null;
+      const size = pxOf(v);
+      const cap = dim === 'width' ? { min: 'minWidth', max: 'maxWidth' } : { min: 'minHeight', max: 'maxHeight' };
+      if (size !== undefined) {
+        const min = pxOf(n.styles[cap.min]);
+        const max = pxOf(n.styles[cap.max]);
+        if (min !== undefined && min > size) styles[cap.min] = null;
+        if (max !== undefined && max < size) styles[cap.max] = null;
+      }
+      return styles;
+    });
   const allText = nodes.every((n) => n.type === 'text');
-  const anyFrame = nodes.some((n) => n.type === 'frame');
-  const isFlex = value('display') === 'flex';
+  const anyFrame = frames.length > 0;
+  const display = common(frames.map((n) => n.styles.display));
+  const isFlex = display !== MIXED && isFlexDisplay(display);
+  const displayMode: FieldValue = display === MIXED ? MIXED : isFlex ? 'flex' : display === undefined || display === 'block' ? 'block' : undefined;
+  const layoutValue = (key: string): FieldValue => common(frames.map((n) => n.styles[key]));
 
   const setSizing = (dim: 'width' | 'height', mode: Sizing) => {
     doc.batch(actor, `Set ${dim} to ${mode}`, () => {
-      for (const n of nodes) {
+      write(nodes, (n) => {
         const parent = parentOf(n);
-        const flexParent = parent?.styles.display === 'flex';
-        const rowParent = flexParent && String(parent.styles.flexDirection ?? 'row').startsWith('row');
+        const flexParent = isFlexDisplay(parent?.styles.display);
+        const rowParent = flexParent && String(parent!.styles.flexDirection ?? 'row').startsWith('row');
         const mainAxis = (dim === 'width') === rowParent;
-        const measured = document.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(n.id)}"]`)?.getBoundingClientRect();
+        // Layout size (offsetWidth), not the on-screen box, which the canvas zoom scales.
+        const el = canvasNodeElement(n.id);
         const styles: Record<string, StyleValue | null> = {};
         if (mode === 'fit') Object.assign(styles, { [dim]: 'fit-content' }, mainAxis ? { flex: null } : { alignSelf: null });
         if (mode === 'fixed') {
-          const px = measured ? Math.round(dim === 'width' ? measured.width : measured.height) : 100;
+          const px = el ? Math.round(dim === 'width' ? el.offsetWidth : el.offsetHeight) : 100;
           Object.assign(styles, { [dim]: `${px}px` }, mainAxis ? { flex: null } : { alignSelf: null });
         }
         if (mode === 'fill') {
@@ -83,132 +165,244 @@ export function Inspector() {
           else if (mainAxis) Object.assign(styles, { flex: 1, [dim]: null });
           else Object.assign(styles, { alignSelf: 'stretch', [dim]: null });
         }
-        doc.updateStyles(actor, [{ nodeIds: [n.id], styles }]);
-      }
+        // Captured pages spell flex as its longhands, which would override the shorthand.
+        if ('flex' in styles) Object.assign(styles, { flexGrow: null, flexShrink: null, flexBasis: null });
+        return styles;
+      });
     });
   };
 
+  // An artboard sits on the page, not in a container it could fill.
+  const artboard = nodes.some((n) => parentOf(n)?.type === 'root');
   const sizing = (dim: 'width' | 'height') => common(nodes.map((n) => sizingOf(n, parentOf(n), dim)));
-  const other = [...new Set(nodes.flatMap((n) => Object.keys(n.styles)))].filter((k) => !OWNED.has(k)).sort();
+
+  const single = nodes.length === 1 ? nodes[0]! : null;
+  const resolveColor = (v: string) => resolveTokenValue(doc, v);
+  const direction = String(layoutValue('flexDirection') === MIXED ? 'row' : (layoutValue('flexDirection') ?? 'row'));
 
   return (
     <div className="inspector-body">
-      <header className="inspector-head">{nodes.length === 1 ? nodes[0]!.name : `${nodes.length} layers`}</header>
+      <header className="inspector-head">
+        {single ? (
+          <InlineRename className="inspector-name" label="Layer name" tip="Double-click to rename" value={single.name} onCommit={(name) => doc.renameNodes(actor, [{ nodeId: single.id, name }])} />
+        ) : (
+          <span className="inspector-name">{`${nodes.length} layers`}</span>
+        )}
+        <span className="inspector-kind">{single ? KIND[single.type] : 'Mixed'}</span>
+      </header>
 
       {anyFrame && (
         <Section title="Layout">
-          <SelectField label="Display" value={isFlex ? 'flex' : value('display') === MIXED ? MIXED : 'block'} options={[['flex', 'Flex'], ['block', 'Block']]} onChange={(v) => set({ display: v === 'block' ? null : v })} />
+          <SegmentedField
+            label="Display"
+            value={displayMode}
+            options={[
+              { value: 'block', label: 'Block' },
+              { value: 'flex', label: 'Flex' },
+            ]}
+            onChange={(v) => setLayout({ display: v === 'block' ? null : v })}
+          />
           {isFlex && (
             <>
-              <SelectField label="Direction" value={value('flexDirection') ?? 'row'} options={[['row', 'Row'], ['column', 'Column'], ['row-reverse', 'Row reverse'], ['column-reverse', 'Column reverse']]} onChange={(v) => set({ flexDirection: v })} />
-              <TextField label="Gap" unit="px" value={value('gap')} onCommit={(v) => set({ gap: v || null })} />
-              <SelectField label="Align" value={value('alignItems')} options={[['flex-start', 'Start'], ['center', 'Center'], ['flex-end', 'End'], ['stretch', 'Stretch'], ['baseline', 'Baseline']]} onChange={(v) => set({ alignItems: v })} />
-              <SelectField label="Justify" value={value('justifyContent')} options={[['flex-start', 'Start'], ['center', 'Center'], ['flex-end', 'End'], ['space-between', 'Space between'], ['space-around', 'Space around'], ['space-evenly', 'Space evenly']]} onChange={(v) => set({ justifyContent: v })} />
-              <SelectField label="Wrap" value={value('flexWrap') ?? 'nowrap'} options={[['nowrap', 'No wrap'], ['wrap', 'Wrap']]} onChange={(v) => set({ flexWrap: v === 'nowrap' ? null : v })} />
+              <div className="layout-direction is-wide">
+                <SegmentedField
+                  label="Direction"
+                  span={1}
+                  value={layoutValue('flexDirection') ?? 'row'}
+                  options={[
+                    { value: 'row', label: 'Row', icon: icons.arrowRight },
+                    { value: 'column', label: 'Column', icon: icons.arrowDown },
+                    { value: 'row-reverse', label: 'Row reverse', icon: icons.arrowLeft },
+                    { value: 'column-reverse', label: 'Column reverse', icon: icons.arrowUp },
+                  ]}
+                  onChange={(v) => setLayout({ flexDirection: v })}
+                />
+                <button
+                  type="button"
+                  className={`toggle-button ${layoutValue('flexWrap') === 'wrap' ? 'is-on' : ''}`}
+                  aria-pressed={layoutValue('flexWrap') === 'wrap'}
+                  aria-label="Wrap"
+                  data-tip={layoutValue('flexWrap') === 'wrap' ? 'Wrap: on' : 'Wrap: off'}
+                  onClick={() => setLayout({ flexWrap: layoutValue('flexWrap') === 'wrap' ? null : 'wrap' })}
+                >
+                  {icons.wrap}
+                </button>
+              </div>
+              <div className="layout-align is-wide">
+                <AlignGrid direction={direction} justify={layoutValue('justifyContent')} align={layoutValue('alignItems')} onPick={(justifyContent, alignItems) => setLayout({ justifyContent, alignItems })} />
+                <div className="layout-align-fields">
+                  <TextField label="Gap" unit="px" prefix={glyphs.gap} placeholder="0" value={common(frames.map(gapOf))} onCommit={(v) => setLayout({ gap: v || null, rowGap: null, columnGap: null })} />
+                  <SelectField label="Justify" hideLabel value={layoutValue('justifyContent')} options={[['flex-start', 'Start'], ['center', 'Center'], ['flex-end', 'End'], ['space-between', 'Space between'], ['space-around', 'Space around'], ['space-evenly', 'Space evenly']]} onChange={(v) => setLayout({ justifyContent: v })} />
+                  <SelectField label="Align" hideLabel value={layoutValue('alignItems')} options={[['flex-start', 'Start'], ['center', 'Center'], ['flex-end', 'End'], ['stretch', 'Stretch'], ['baseline', 'Baseline']]} onChange={(v) => setLayout({ alignItems: v })} />
+                </div>
+              </div>
             </>
           )}
+          <span className="field-caption is-wide">Padding</span>
           {SIDES.map((side) => (
             <TextField
               key={side}
               label={`Padding ${side.toLowerCase()}`}
               unit="px"
-              value={common(nodes.map((n) => paddingSide(n.styles, side)))}
-              onCommit={(v) => {
-                const longhands: Record<string, StyleValue | null> = { padding: null };
-                for (const s of SIDES) longhands[`padding${s}`] = s === side ? v || null : (common(nodes.map((n) => paddingSide(n.styles, s))) as StyleValue | undefined) ?? null;
-                set(longhands);
-              }}
+              prefix={glyphs[`pad${side}`]}
+              placeholder="0"
+              value={common(frames.map((n) => paddingSide(n.styles, side)))}
+              onCommit={(v) =>
+                // Each frame keeps its own other sides (a mixed selection has no shared value to copy).
+                write(frames, (n) => {
+                  const longhands: Record<string, StyleValue | null> = { padding: null };
+                  for (const s of SIDES) longhands[`padding${s}`] = s === side ? v || null : (paddingSide(n.styles, s) ?? null);
+                  return longhands;
+                })
+              }
             />
           ))}
         </Section>
       )}
 
       <Section title="Size">
+        <TextField label="W" unit="px" prefix="W" placeholder="Auto" value={value('width')} onCommit={(v) => setDim('width', v)} />
+        <TextField label="H" unit="px" prefix="H" placeholder="Auto" value={value('height')} onCommit={(v) => setDim('height', v)} />
         {(['width', 'height'] as const).map((dim) => (
-          <div className="field-pair" key={dim}>
-            <SelectField label={`${dim === 'width' ? 'Width' : 'Height'} sizing`} value={sizing(dim)} options={[['fixed', 'Fixed'], ['fill', 'Fill'], ['fit', 'Fit']]} onChange={(v) => setSizing(dim, v as Sizing)} />
-            <TextField label={dim === 'width' ? 'W' : 'H'} unit="px" value={value(dim)} onCommit={(v) => set({ [dim]: v || null })} />
-          </div>
+          <SelectField key={dim} label={`${dim === 'width' ? 'Width' : 'Height'} sizing`} hideLabel value={sizing(dim)} options={artboard ? [['fixed', 'Fixed'], ['fit', 'Fit content']] : [['fixed', 'Fixed'], ['fill', 'Fill container'], ['fit', 'Fit content']]} onChange={(v) => setSizing(dim, v as Sizing)} />
         ))}
       </Section>
 
       <Section title="Fill">
-        <ColorField label="Background" value={value('backgroundColor')} onCommit={(v) => set({ backgroundColor: v || null })} />
-        <TextField label="Opacity" value={value('opacity')} placeholder="1" onCommit={(v) => set({ opacity: v === '' ? null : Number(v) })} />
+        <div className="fill-row is-wide">
+          <ColorField label="Background" span={1} resolve={resolveColor} value={common(nodes.map(backgroundOf))} onCommit={(v) => set({ backgroundColor: v || null })} />
+          <TextField label="Opacity" prefix={glyphs.opacity} step={0.01} value={value('opacity')} placeholder="1" onCommit={(v) => set({ opacity: v === '' ? null : Number(v) })} />
+        </div>
       </Section>
 
       {allText && (
         <Section title="Text">
           <LocalFontsButton />
-          <TextField label="Font" value={value('fontFamily')} placeholder="inherit" onCommit={(v) => set({ fontFamily: v || null })} />
-          <TextField label="Size" unit="px" value={value('fontSize')} onCommit={(v) => set({ fontSize: v || null })} />
-          <SelectField label="Weight" value={value('fontWeight') === undefined ? undefined : String(value('fontWeight'))} options={['100', '200', '300', '400', '500', '600', '700', '800', '900'].map((w) => [w, w])} onChange={(v) => set({ fontWeight: Number(v) })} />
-          <TextField label="Line height" value={value('lineHeight')} placeholder="auto" onCommit={(v) => set({ lineHeight: v || null })} />
-          <TextField label="Letter spacing" value={value('letterSpacing')} placeholder="0" onCommit={(v) => set({ letterSpacing: v || null })} />
-          <SelectField label="Align text" value={value('textAlign')} options={[['left', 'Left'], ['center', 'Center'], ['right', 'Right'], ['justify', 'Justify']]} onChange={(v) => set({ textAlign: v })} />
-          <ColorField label="Color" value={value('color')} onCommit={(v) => set({ color: v || null })} />
+          <TextField label="Font" span={2} value={value('fontFamily')} placeholder="Inherited" onCommit={(v) => setText({ fontFamily: v || null })} />
+          <SelectField label="Weight" hideLabel value={value('fontWeight') === MIXED ? MIXED : weightValue(value('fontWeight') as StyleValue | undefined)} options={WEIGHTS} onChange={(v) => setText({ fontWeight: Number(v) })} />
+          <TextField label="Size" unit="px" prefix={glyphs.fontSize} value={value('fontSize')} placeholder="12" onCommit={(v) => setText({ fontSize: v || null })} />
+          <TextField label="Line height" prefix={glyphs.lineHeight} value={value('lineHeight')} placeholder="Auto" onCommit={(v) => setText({ lineHeight: lineHeightValue(v) })} />
+          <TextField label="Letter spacing" unit="px" prefix={glyphs.letterSpacing} value={value('letterSpacing')} placeholder="0" onCommit={(v) => setText({ letterSpacing: v || null })} />
+          <SegmentedField
+            label="Align text"
+            value={value('textAlign')}
+            options={[
+              { value: 'left', label: 'Align left', icon: icons.alignTextLeft },
+              { value: 'center', label: 'Align center', icon: icons.alignTextCenter },
+              { value: 'right', label: 'Align right', icon: icons.alignTextRight },
+              { value: 'justify', label: 'Justify', icon: icons.alignTextJustify },
+            ]}
+            onChange={(v) => setText({ textAlign: v })}
+          />
+          <ColorField label="Color" resolve={resolveColor} value={value('color')} onCommit={(v) => setText({ color: v || null })} />
         </Section>
       )}
 
-      {anyFrame && <RadiusSection value={value} set={set} />}
+      {nodes.every((n) => n.type === 'svg') && (
+        <Section title="Vector">
+          <ColorField label="Icon color" resolve={resolveColor} value={value('color')} onCommit={(v) => set({ color: v || null })} />
+          <p className="section-note is-wide">Paints the parts drawn with currentColor. Fixed colours are under Selection colors.</p>
+        </Section>
+      )}
 
-      <Section title="Other styles">
-        {other.map((key) => (
-          <div className="field-pair" key={key}>
-            <TextField label={key} value={value(key)} onCommit={(v) => setAny({ [key]: v || null })} />
-            <button className="icon-button" aria-label={`Remove ${key}`} onClick={() => setAny({ [key]: null })}>
-              {icons.close}
-            </button>
-          </div>
-        ))}
-        <AddStyle onAdd={(k, v) => setAny({ [k]: v })} />
+      <RadiusSection value={value} set={set} />
+
+      <OutlineSection nodes={nodes} set={set} resolve={resolveColor} />
+      <BorderSection nodes={nodes} set={set} resolve={resolveColor} />
+      <ShadowSection nodes={nodes} set={set} resolve={resolveColor} inset={false} text={allText} />
+      {!allText && <ShadowSection nodes={nodes} set={set} resolve={resolveColor} inset />}
+      <FiltersSection nodes={nodes} set={set} />
+
+      <Section title="Selection colors">
+        <SelectionColors groups={theme.colors} />
       </Section>
 
       <ExportSection nodes={nodes} />
+    </div>
+  );
+});
+
+const KIND: Record<MarkupNode['type'], string> = { root: 'Page', frame: 'Frame', text: 'Text', image: 'Image', svg: 'Vector' };
+const WEIGHTS: [string, string][] = [
+  ['100', 'Thin'],
+  ['200', 'Extra light'],
+  ['300', 'Light'],
+  ['400', 'Regular'],
+  ['500', 'Medium'],
+  ['600', 'Semibold'],
+  ['700', 'Bold'],
+  ['800', 'Extra bold'],
+  ['900', 'Black'],
+];
+
+const POSITIONS = ['flex-start', 'center', 'flex-end'] as const;
+const norm = (v: FieldValue) => (v === 'start' ? 'flex-start' : v === 'end' ? 'flex-end' : v === undefined ? 'flex-start' : v);
+const ROW_NAMES = ['top', 'middle', 'bottom'];
+const COL_NAMES = ['left', 'center', 'right'];
+
+/**
+ * 3×3 alignment pad: the cell is where children sit in the frame. For a row the columns pick
+ * justify-content and the rows pick align-items; a column swaps the two.
+ */
+function AlignGrid({ direction, justify, align, onPick }: { direction: string; justify: FieldValue; align: FieldValue; onPick(justify: string, align: string): void }) {
+  const column = direction.startsWith('column');
+  const j = norm(justify);
+  const a = norm(align);
+  return (
+    <div className="align-grid" role="group" aria-label="Alignment">
+      {ROW_NAMES.map((rowName, r) =>
+        COL_NAMES.map((colName, c) => {
+          const cellJustify = POSITIONS[column ? r : c]!;
+          const cellAlign = POSITIONS[column ? c : r]!;
+          const on = j === cellJustify && a === cellAlign;
+          const name = rowName === 'middle' && colName === 'center' ? 'Align center' : `Align ${rowName} ${colName}`;
+          return (
+            <button key={`${r}${c}`} type="button" className={`align-cell ${on ? 'is-on' : ''} ${column ? 'is-column' : ''}`} aria-label={name} aria-pressed={on} data-tip={name} onClick={() => onPick(cellJustify, cellAlign)}>
+              <span className="align-mark" />
+            </button>
+          );
+        }),
+      )}
     </div>
   );
 }
 
 function RadiusSection({ value, set }: { value: (k: string) => FieldValue; set: (s: Record<string, StyleValue | null>) => void }) {
   const corners = ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'] as const;
-  const [perCorner, setPerCorner] = useState(corners.some((c) => value(`border${c}Radius`) !== undefined));
-  return (
-    <Section title="Radius">
-      {perCorner ? (
-        corners.map((c) => <TextField key={c} label={c.replace(/([A-Z])/g, ' $1').trim()} unit="px" value={value(`border${c}Radius`) ?? value('borderRadius')} onCommit={(v) => set({ [`border${c}Radius`]: v || null })} />)
-      ) : (
-        <TextField label="Radius" unit="px" value={value('borderRadius')} placeholder="0" onCommit={(v) => set({ borderRadius: v || null })} />
-      )}
-      <button className="text-button" onClick={() => setPerCorner((p) => !p)}>
-        {perCorner ? 'Same for all corners' : 'Per corner'}
-      </button>
-    </Section>
-  );
-}
-
-function AddStyle({ onAdd }: { onAdd(key: string, value: string): void }) {
-  const [key, setKey] = useState('');
-  const [val, setVal] = useState('');
-  const submit = () => {
-    const k = key.trim().replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-    if (k && val.trim()) onAdd(k, val.trim());
-    setKey('');
-    setVal('');
+  const cornerGlyph = { TopLeft: glyphs.cornerTL, TopRight: glyphs.cornerTR, BottomRight: glyphs.cornerBR, BottomLeft: glyphs.cornerBL };
+  const corner = (c: (typeof corners)[number]) => value(`border${c}Radius`) ?? value('borderRadius');
+  // Captured pages write the four corners; equal ones read as one radius.
+  const sameCorners = () => {
+    const all = corners.map((c) => value(`border${c}Radius`));
+    return all.every((v) => v !== undefined && v === all[0]) ? all[0] : undefined;
   };
+  const [perCorner, setPerCorner] = useState(corners.some((c) => value(`border${c}Radius`) !== undefined) && sameCorners() === undefined);
   return (
-    <form
-      className="field-pair add-style"
-      onSubmit={(e) => {
-        e.preventDefault();
-        submit();
-      }}
+    <Section
+      title="Radius"
+      actions={
+        <button type="button" className={`toggle-button is-small ${perCorner ? 'is-on' : ''}`} aria-pressed={perCorner} aria-label="Per corner" data-tip={perCorner ? 'Same for all corners' : 'Per corner'} onClick={() => setPerCorner((p) => !p)}>
+          {icons.corners}
+        </button>
+      }
     >
-      <input className="field-input" aria-label="New property" placeholder="property" value={key} onChange={(e) => setKey(e.target.value)} />
-      <input className="field-input" aria-label="New value" placeholder="value" value={val} onChange={(e) => setVal(e.target.value)} />
-      <button type="submit" className="text-button">
-        Add
-      </button>
-    </form>
+      {perCorner ? (
+        corners.map((c) => (
+          <TextField
+            key={c}
+            label={c.replace(/([A-Z])/g, ' $1').trim()}
+            unit="px"
+            prefix={cornerGlyph[c]}
+            placeholder="0"
+            value={corner(c)}
+            // A stored shorthand is split per node so the other corners keep their radius (see resolveConflicts).
+            onCommit={(v) => set({ [`border${c}Radius`]: v || null })}
+          />
+        ))
+      ) : (
+        <TextField label="Radius" unit="px" prefix={glyphs.radius} value={value('borderRadius') ?? sameCorners()} placeholder="0" onCommit={(v) => set({ borderRadius: v || null })} />
+      )}
+    </Section>
   );
 }
 
@@ -228,7 +422,7 @@ function LocalFontsButton() {
       type="button"
       className="field-input"
       onClick={() => void requestLocalFonts().then((ok) => setState(ok ? 'granted' : 'unavailable'))}
-      title={state === 'unavailable' ? 'Local fonts are not available or access was denied' : 'Let Markup see the fonts installed on this computer'}
+      data-tip={state === 'unavailable' ? 'Local fonts are not available or access was denied' : 'Let Markup see the fonts installed on this computer'}
     >
       Use local fonts
     </button>

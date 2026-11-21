@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { MarkupDoc, MarkupNode } from '@markup/doc';
-import { formatShortcut, isMacPlatform, shortcutLabel, type Command } from '../keyboard';
+import { formatShortcut, isMacPlatform, shortcutLabel, type Command } from '../commands/keyboard';
 import { useDoc } from '../store/DocProvider';
-import { useSelection } from '../selection';
-import { copiedStyles } from '../canvasOps';
+import { useSelection } from '../canvas/selection';
+import { copiedStyles } from '../canvas/canvasOps';
+import { useDismiss } from '../ui/useDismiss';
 import './contextMenu.css';
 
 export interface CopyMenuState {
@@ -85,6 +86,8 @@ export function CopyMenu({ at, onPick, onClose }: { at: CopyMenuState; onPick(co
   const [open, setOpen] = useState<{ index: number; focus: boolean } | null>(null);
   const [subPos, setSubPos] = useState<{ left: number; top: number } | null>(null);
   const hits = useMemo(() => layersAt(doc, at.x, at.y), [doc, at.x, at.y]);
+  // Like a native menu: gone when the app loses focus, the window resizes or the page scrolls under it.
+  useDismiss(onClose, { ref: wrapRef });
 
   // Right-clicking a layer outside the selection selects it first (hits only change with the click point).
   const { get: getSelection, set: setSelection } = selection;
@@ -141,6 +144,7 @@ export function CopyMenu({ at, onPick, onClose }: { at: CopyMenuState; onPick(co
     ],
     [cmd('Bring to front', 'bringToFront'), cmd('Send to back', 'sendToBack'), cmd('Move forward', 'moveForward'), cmd('Move backward', 'moveBackward')],
     [cmd('Show / hide', 'toggleHidden'), cmd('Lock / unlock', 'toggleLocked')],
+    [cmd('Set as thumbnail', 'setThumbnail', nodes.length !== 1)],
   ];
   const entries = groups.flat();
   const openEntry = open ? entries[open.index] : undefined;

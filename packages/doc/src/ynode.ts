@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import * as Y from 'yjs';
 import type { MarkupNode, Styles } from './schema';
+import { orderStyles } from './styles';
 
 export type YNode = Y.Map<unknown>;
 
@@ -45,7 +46,7 @@ export function snapshotNode(node: YNode): MarkupNode {
     name: node.get('name') as string,
     parentId: (node.get('parentId') as string | null) ?? null,
     children: children.toArray(),
-    styles: styles.toJSON() as Styles,
+    styles: orderStyles(styles.toJSON() as Styles),
     locked: Boolean(node.get('locked')),
     hidden: Boolean(node.get('hidden')),
   };

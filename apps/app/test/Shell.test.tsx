@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { LOCAL_USER, Shell } from '../src/App';
-import { isMacPlatform } from '../src/keyboard';
+import { isMacPlatform } from '../src/commands/keyboard';
 import { Surfaces, WorkspaceProvider } from '../src/workspace/WorkspaceProvider';
 import { memoryWorkspace } from './memoryWorkspace';
 
@@ -30,7 +30,7 @@ describe('shell', () => {
         </WorkspaceProvider>,
       );
       expect(container.querySelector('.editor')).not.toBeNull();
-      act(() => screen.getByTitle(/^Files/).click());
+      act(() => screen.getByRole('button', { name: 'Files' }).click());
       expect(container.querySelector('.dashboard')).not.toBeNull();
       // What resourceTools' open_file does for an agent.
       await act(async () => {
@@ -78,7 +78,7 @@ describe('shell', () => {
       // To tab B, to the dashboard, and back to A.
       act(() => workspace.activate(b));
       expect(transform()).not.toBe(moved);
-      act(() => screen.getByTitle(/^Files/).click());
+      act(() => screen.getByRole('button', { name: 'Files' }).click());
       expect(container.querySelector('.dashboard')).not.toBeNull();
       await act(async () => {
         await workspace.open(a);

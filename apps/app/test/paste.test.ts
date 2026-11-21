@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MarkupDoc, type Actor } from '@markup/doc';
-import { pasteIntoDoc } from '../src/paste';
+import { fontFaces, keyframeRules, MarkupDoc, type Actor } from '@markup/doc';
+import { pasteIntoDoc } from '../src/clipboard/paste';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
 const center = { x: 1000, y: 500 };
@@ -22,6 +22,37 @@ const card = (doc: MarkupDoc, rootId: string) =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe('paste', () => {
+  it('a page snapshot brings its web fonts into the file, not onto the layers', async () => {
+    const { doc, rootId } = setup();
+    const face = '@font-face{font-family:&quot;Matter&quot;;src:url(data:font/woff2;base64,AAAA);font-weight:400}';
+    const html = `<!--markup:snapshot v1--><div data-markup-fonts="${face}" data-markup-snapshot="v1" data-markup-dialect="any" layer-name="Site" style="position:relative;width:200px;height:100px"><p style="font-family:Matter, sans-serif">Hi</p></div>`;
+    const ids = await pasteIntoDoc(doc, human, { html }, target(rootId));
+    expect(fontFaces(doc)).toHaveLength(1);
+    expect(fontFaces(doc)[0]).toContain('font-family:"Matter"');
+    expect(JSON.stringify(allNodes(doc, ids[0]!))).not.toContain('data-markup-fonts');
+  });
+
+  it('a page snapshot brings its keyframes into the file, and its layers keep their animations', async () => {
+    const { doc, rootId } = setup();
+    const rule = '@keyframes mk-fadeIn-x1{0%{opacity:0}100%{opacity:1}}';
+    const html = `<!--markup:snapshot v1--><div data-markup-keyframes="${rule}" data-markup-snapshot="v1" data-markup-dialect="any" layer-name="Site" style="position:relative;width:200px;height:100px"><div style="width:50px;height:50px;animation-name:mk-fadeIn-x1;animation-duration:600ms;animation-fill-mode:both"></div></div>`;
+    const ids = await pasteIntoDoc(doc, human, { html }, target(rootId));
+    expect(keyframeRules(doc)).toEqual([rule]);
+    const dump = JSON.stringify(allNodes(doc, ids[0]!));
+    expect(dump).not.toContain('data-markup-keyframes');
+    expect(dump).toContain('"animationName":"mk-fadeIn-x1"');
+    expect(dump).toContain('"animationDuration":"600ms"');
+  });
+
+  it('a snapshot keeps SVG filter references and its hidden SVG effects layer', async () => {
+    const { doc, rootId } = setup();
+    const html = `<!--markup:snapshot v1--><div data-markup-snapshot="v1" data-markup-dialect="any" layer-name="Site" style="position:relative;width:200px;height:100px"><svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" layer-name="SVG effects" style="position:absolute;width:0px;height:0px"><defs><filter id="mk-filter-ab1"><feGaussianBlur stdDeviation="4"></feGaussianBlur></filter></defs></svg><div style="width:50px;height:50px;filter:url(#mk-filter-ab1)"></div></div>`;
+    const ids = await pasteIntoDoc(doc, human, { html }, target(rootId));
+    const dump = JSON.stringify(allNodes(doc, ids[0]!));
+    expect(dump).toContain('"filter":"url(#mk-filter-ab1)"');
+    expect(dump).toContain('feGaussianBlur');
+  });
+
   it('pastes foreign html without scripts', async () => {
     const { doc, rootId } = setup();
     const html =

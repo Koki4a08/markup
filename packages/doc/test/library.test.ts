@@ -187,6 +187,17 @@ describe('MarkupLibrary', () => {
     expect(codeOf(() => lib.touch('ghost'))).toBe('INVALID_ARGUMENT');
   });
 
+  it('touch keeps and forgets the chosen thumbnail layer', () => {
+    const lib = new MarkupLibrary();
+    lib.addFile({ id: 'a', name: 'A' });
+    lib.touch('a', { thumbnail: 'data:x', thumbnailNodeId: 'n1' });
+    expect(lib.get('a')!.thumbnailNodeId).toBe('n1');
+    lib.touch('a');
+    expect(lib.get('a')!.thumbnailNodeId).toBe('n1');
+    lib.touch('a', { thumbnailNodeId: null });
+    expect(lib.get('a')!.thumbnailNodeId).toBeUndefined();
+  });
+
   it('persists through a Y update to a second library', () => {
     const one = new MarkupLibrary();
     const p = one.createFolder({ name: 'P' });

@@ -16,6 +16,8 @@ export type Command =
   | 'toggleLocked'
   | 'zoomToFit'
   | 'zoomTo100'
+  | 'zoomIn'
+  | 'zoomOut'
   | 'wrapInFrame'
   | 'wrapInFlex'
   | 'collapseLayers'
@@ -38,7 +40,8 @@ export type Command =
   | 'bringToFront'
   | 'sendToBack'
   | 'moveForward'
-  | 'moveBackward';
+  | 'moveBackward'
+  | 'setThumbnail';
 
 export interface KeyLike {
   key: string;
@@ -82,6 +85,11 @@ const BINDINGS: Binding[] = [
   { code: 'KeyL', mod: true, shift: true, command: 'toggleLocked' },
   { code: 'Digit1', shift: true, command: 'zoomToFit' },
   { code: 'Digit0', mod: true, command: 'zoomTo100' },
+  { code: 'Numpad0', mod: true, command: 'zoomTo100' },
+  { code: 'Equal', mod: true, command: 'zoomIn' },
+  { code: 'NumpadAdd', mod: true, command: 'zoomIn' },
+  { code: 'Minus', mod: true, command: 'zoomOut' },
+  { code: 'NumpadSubtract', mod: true, command: 'zoomOut' },
   { code: 'KeyF', shift: true, command: 'wrapInFrame' },
   { code: 'KeyA', shift: true, command: 'wrapInFlex' },
   { code: 'KeyL', alt: true, command: 'collapseLayers' },
@@ -109,6 +117,9 @@ export function resolveShortcut(e: KeyLike, isMac: boolean): Command | null {
   const mod = isMac ? e.metaKey : e.ctrlKey;
   const otherMod = isMac ? e.ctrlKey : e.metaKey;
   if (otherMod) return null;
+  // Zoom keys go by the character typed, so + and − work on every keyboard layout (with or without Shift).
+  if (mod && !e.altKey && (e.key === '+' || e.key === '=')) return 'zoomIn';
+  if (mod && !e.altKey && (e.key === '-' || e.key === '_')) return 'zoomOut';
   const code = e.code || `Key${e.key.toUpperCase()}`;
   const hit = BINDINGS.find((b) => b.code === code && !!b.mod === mod && !!b.shift === e.shiftKey && !!b.alt === e.altKey);
   return hit?.command ?? null;
@@ -116,7 +127,7 @@ export function resolveShortcut(e: KeyLike, isMac: boolean): Command | null {
 
 export const isMacPlatform = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-const KEY_NAMES: Record<string, string> = { Escape: 'Esc', Enter: 'Enter', BracketRight: ']', BracketLeft: '[', Backslash: '\\',Backspace: '⌫', Delete: 'Del' };
+const KEY_NAMES: Record<string, string> = { Equal: '+', Minus: '−', NumpadAdd: '+', NumpadSubtract: '−', Escape: 'Esc', Enter: 'Enter', BracketRight: ']', BracketLeft: '[', Backslash: '\\',Backspace: '⌫', Delete: 'Del' };
 
 /** Display text for a key combo: `Ctrl+Shift+C` on Windows and Linux, `⇧⌘C` on macOS. */
 export function formatShortcut(combo: KeyCombo, isMac: boolean): string {

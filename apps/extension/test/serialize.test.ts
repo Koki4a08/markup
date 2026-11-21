@@ -13,8 +13,11 @@ async function run(name: string, limits?: CaptureLimits) {
   const html = await capture(f.targets.map((id) => document.getElementById(id)!), env, META, limits);
   const holder = document.createElement('div');
   holder.innerHTML = html;
-  const root = holder.querySelector(':scope > div')!;
-  return { html, root, env };
+  const snapshot = holder.querySelector(':scope > div')!;
+  // A lone target written as a frame is the snapshot root itself; `root` stays the parent of the target either way.
+  const flat = f.targets.length === 1 && css(snapshot).position === 'absolute';
+  const root = flat ? Object.assign(document.createElement('div'), { innerHTML: snapshot.outerHTML }) : snapshot;
+  return { html, root, snapshot, env };
 }
 
 const css = (el: Element | null | undefined) => parseStyleAttr(el?.getAttribute('style') ?? '');
@@ -32,20 +35,12 @@ describe('capture', () => {
     expect(css(holder.querySelector('p')).fontFamily).toBe("-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif");
   });
 
-  it('root takes the background behind the target', async () => {
+  it('a picked element gets no background it does not paint itself', async () => {
     document.body.innerHTML = `<div style="background-color: rgb(13, 17, 23)" data-rect="0 0 400 200"><div id="t" data-rect="10 10 100 50"></div></div>`;
     const html = await capture([document.getElementById('t')!], fakeEnv({}), META);
     const holder = document.createElement('div');
     holder.innerHTML = html;
-    expect(css(holder.querySelector(':scope > div')).backgroundColor).toBe('rgb(13, 17, 23)');
-  });
-
-  it('root falls back to white when nothing behind the target is opaque', async () => {
-    document.body.innerHTML = `<div id="t" data-rect="0 0 100 50"></div>`;
-    const html = await capture([document.getElementById('t')!], fakeEnv({}), META);
-    const holder = document.createElement('div');
-    holder.innerHTML = html;
-    expect(css(holder.querySelector(':scope > div')).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(css(holder.querySelector(':scope > div')).backgroundColor).toBeUndefined();
   });
 
   it('an image that cannot be fetched is cut from the visible tab', async () => {
@@ -58,13 +53,24 @@ describe('capture', () => {
     expect(regions[0]).toMatchObject({ x: 0, y: 0, width: 40, height: 30 });
   });
 
-  it('wraps the capture in a snapshot root', async () => {
-    const { html, root } = await run('flex row');
+  it('a lone target is the snapshot root itself, with no wrapper frame', async () => {
+    const { html, snapshot } = await run('flex row');
     expect(html.startsWith('<!--markup:snapshot v1-->')).toBe(true);
-    expect(root.getAttribute('layer-name')).toBe(META.title);
-    expect(root.getAttribute('data-markup-snapshot')).toBe('v1');
-    expect(root.getAttribute('data-source')).toBe(META.url);
-    expect(css(root)).toEqual({ position: 'relative', width: '200px', height: '50px' });
+    expect(snapshot.getAttribute('layer-name')).toBe(META.title);
+    expect(snapshot.getAttribute('data-markup-snapshot')).toBe('v1');
+    expect(snapshot.getAttribute('data-source')).toBe(META.url);
+    expect(css(snapshot)).toMatchObject({ position: 'absolute', display: 'flex', width: '200px', height: '50px' });
+  });
+
+  it('wraps several targets in a snapshot root', async () => {
+    document.body.innerHTML = `<div id="a" data-rect="0 0 100 20"></div><div id="b" data-rect="0 40 50 30"></div>`;
+    const html = await capture([document.getElementById('a')!, document.getElementById('b')!], fakeEnv({}), META);
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    const snapshot = holder.querySelector(':scope > div')!;
+    expect(snapshot.getAttribute('layer-name')).toBe(META.title);
+    expect(css(snapshot)).toMatchObject({ position: 'relative', height: '30px' });
+    expect(snapshot.children).toHaveLength(2);
   });
 
   it('flex row keeps flex and gap', async () => {
@@ -264,5 +270,15 @@ describe('shadow DOM', () => {
     const red = [...holder.querySelectorAll('div')].find((d) => css(d).backgroundColor === 'rgb(255, 0, 0)');
     expect(red).toBeDefined();
     expect(red!.textContent).toContain('Slotted body');
+  });
+});
+
+describe('collapsed content', () => {
+  it('leaves out what a closed <details>, hidden="until-found" or content-visibility: hidden do not paint', async () => {
+    const { html } = await run('collapsed content');
+    expect(html).toContain('Question one');
+    expect(html).toContain('Question two');
+    expect(html).toContain('Shown answer two');
+    for (const hidden of ['Hidden answer one', 'Loose hidden text', 'Hidden until found', 'Hidden by content-visibility']) expect(html).not.toContain(hidden);
   });
 });

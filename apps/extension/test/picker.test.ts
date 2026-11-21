@@ -86,7 +86,7 @@ describe('picker', () => {
   });
 
   it('hint bar names both modes', () => {
-    expect(HINT).toBe('↑↓ adjust · Enter capture · ⌥Enter simplified · ⌘Enter page · Esc exit');
+    expect(HINT).toBe('Click ↵ capture · ⇧ add to selection · Alt ↵ simplified · Ctrl ↵ whole page · ↑ ↓ fine-tune · Esc cancel');
   });
 
   it('Escape stops and removes the overlay', () => {

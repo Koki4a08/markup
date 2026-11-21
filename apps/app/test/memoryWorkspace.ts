@@ -3,7 +3,14 @@ import * as Y from 'yjs';
 import { cloneDoc, Workspace } from '../src/workspace/Workspace';
 
 /** A Workspace whose files live in memory: stored as encoded Yjs state like IndexedDB would. */
-export function memoryWorkspace(opts: { touchDelayMs?: number; captureThumbnail?: (fileId: string) => Promise<string | undefined> | undefined } = {}) {
+export function memoryWorkspace(
+  opts: {
+    touchDelayMs?: number;
+    captureThumbnail?: (fileId: string) => Promise<string | undefined> | undefined;
+    /** Awaited before a stored file loads, to control the order loads finish in. */
+    beforeOpen?: (fileId: string) => Promise<void>;
+  } = {},
+) {
   const library = new MarkupLibrary();
   const store = new Map<string, Uint8Array>();
   const opened: string[] = [];
@@ -15,6 +22,7 @@ export function memoryWorkspace(opts: { touchDelayMs?: number; captureThumbnail?
   const workspace = new Workspace({
     library,
     async openDoc(fileId) {
+      await opts.beforeOpen?.(fileId);
       const state = store.get(fileId);
       if (!state) throw new Error(`no stored file ${fileId}`);
       opened.push(fileId);
