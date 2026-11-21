@@ -1,0 +1,229 @@
+import type { Actor, ActorUndo, MarkupDoc, Styles } from '@markup/doc';
+import type { Command } from './keyboard';
+import type { Tool } from '../canvas/tools';
+import { pasteIntoDoc, readClipboard } from '../clipboard/paste';
+import type { Point } from '../canvas/viewport';
+import { copyAsCode, copyAsPng, exportNodes } from '../export/actions';
+import { copyHtml, copyText } from '../export/clipboard';
+import { nodesPayload, nodesToHtml } from '../clipboard/nodes';
+// The links module alone: the full protocol (zod schemas) loads with the agent bridge, after startup.
+import { nodeLink, pageLink } from '@markup/protocol/links';
+import { copyStyles, pasteStyles, removeFlex, reorder, ungroup } from '../canvas/canvasOps';
+
+export interface CommandContext {
+  doc: MarkupDoc;
+  actor: Actor;
+  undo: ActorUndo;
+  rootId: string;
+  getSelection(): string[];
+  setSelection(ids: string[]): void;
+  setTool(tool: Tool): void;
+  zoomToFit(): void;
+  zoomTo(zoom: number): void;
+  /** One zoom level in or out, about the centre of the canvas. */
+  zoomStep?(direction: 1 | -1): void;
+  startRename(id: string): void;
+  collapseLayers(): void;
+  /** Shows a short status message (copy and export results). */
+  notify?(message: string): void;
+  /** Centre of the visible canvas in world coordinates; where pasted artboards land. */
+  viewportCenter?(): Point;
+  /** Captures the layer as the file's dashboard thumbnail and keeps it as the layer to capture from then on. */
+  setThumbnail?(id: string): Promise<string>;
+}
+
+/** Selected ids that still exist and are not page roots, in document order of their parent. */
+function selected(ctx: CommandContext): string[] {
+  return ctx.getSelection().filter((id) => {
+    const n = ctx.doc.getNode(id);
+    return n && n.type !== 'root';
+  });
+}
+
+function wrap(ctx: CommandContext, kind: 'frame' | 'flex') {
+  const ids = selected(ctx);
+  if (ids.length === 0) return;
+  const { doc, actor } = ctx;
+  const first = doc.requireNode(ids[0]!);
+  const parentId = first.parentId!;
+  const siblings = doc.requireNode(parentId).children;
+  const ordered = ids.filter((id) => doc.requireNode(id).parentId === parentId).sort((a, b) => siblings.indexOf(a) - siblings.indexOf(b));
+  const index = siblings.indexOf(ordered[0]!);
+  const styles: Styles = kind === 'flex' ? { display: 'flex', flexDirection: 'column', gap: '0px' } : { width: 'fit-content', height: 'fit-content' };
+  const wrapper = doc.batch(actor, `Wrapped ${ordered.length} node${ordered.length === 1 ? '' : 's'} in ${kind}`, () => {
+    const [w] = doc.insertNodes(actor, parentId, [{ type: 'frame', name: kind === 'flex' ? 'Flex' : 'Frame', styles }], index);
+    doc.moveNodes(actor, ordered.map((nodeId) => ({ nodeId, parentId: w! })));
+    return w!;
+  });
+  ctx.setSelection([wrapper]);
+}
+
+/** markup:// links to the nodes, one per line; the page's link when there are none. */
+function links(ctx: CommandContext, ids: string[]): string {
+  const { doc } = ctx;
+  if (ids.length) return ids.map((id) => nodeLink(doc.fileId, id)).join('\n');
+  return pageLink(doc.fileId, doc.pageOfNode(ctx.rootId));
+}
+
+/** Runs an async export or copy action and reports its outcome through ctx.notify; never throws. */
+function report(ctx: CommandContext, failure: string, action: () => Promise<string>): void {
+  action().then(
+    (message) => message && ctx.notify?.(message),
+    (e: unknown) => ctx.notify?.(`${failure}: ${e instanceof Error ? e.message : String(e)}`),
+  );
+}
+
+export function runCommand(command: Command, ctx: CommandContext): void {
+  const { doc, actor } = ctx;
+  switch (command) {
+    case 'tool:move':
+      return ctx.setTool('move');
+    case 'tool:frame':
+      return ctx.setTool('frame');
+    case 'tool:rect':
+      return ctx.setTool('rect');
+    case 'tool:text':
+      return ctx.setTool('text');
+    case 'tool:comment':
+      return ctx.setTool('comment');
+    case 'tool:hand':
+      return ctx.setTool('hand');
+    case 'undo':
+      ctx.undo.undo();
+      return;
+    case 'redo':
+      ctx.undo.redo();
+      return;
+    case 'delete': {
+      const ids = selected(ctx);
+      if (ids.length) doc.deleteNodes(actor, ids);
+      return ctx.setSelection([]);
+    }
+    case 'duplicate': {
+      const ids = selected(ctx);
+      if (!ids.length) return;
+      const results = doc.duplicateNodes(actor, ids.map((id) => ({ id })));
+      return ctx.setSelection(results.map((r) => r.newId));
+    }
+    case 'selectChildren': {
+      const children = selected(ctx).flatMap((id) => doc.requireNode(id).children);
+      if (children.length) ctx.setSelection(children);
+      return;
+    }
+    case 'selectParent': {
+      const parents = [...new Set(selected(ctx).map((id) => doc.requireNode(id).parentId!))].filter((p) => doc.requireNode(p).type !== 'root');
+      return ctx.setSelection(parents);
+    }
+    case 'rename': {
+      const [id] = selected(ctx);
+      if (id) ctx.startRename(id);
+      return;
+    }
+    case 'toggleHidden': {
+      const ids = selected(ctx);
+      if (ids.length) doc.setFlags(actor, ids, { hidden: !ids.every((id) => doc.requireNode(id).hidden) });
+      return;
+    }
+    case 'toggleLocked': {
+      const ids = selected(ctx);
+      if (ids.length) doc.setFlags(actor, ids, { locked: !ids.every((id) => doc.requireNode(id).locked) });
+      return;
+    }
+    case 'zoomToFit':
+      return ctx.zoomToFit();
+    case 'zoomTo100':
+      return ctx.zoomTo(1);
+    case 'zoomIn':
+      return ctx.zoomStep?.(1);
+    case 'zoomOut':
+      return ctx.zoomStep?.(-1);
+    case 'wrapInFrame':
+      return wrap(ctx, 'frame');
+    case 'wrapInFlex':
+      return wrap(ctx, 'flex');
+    case 'collapseLayers':
+      return ctx.collapseLayers();
+    case 'exportSelection': {
+      const ids = selected(ctx);
+      if (ids.length) report(ctx, 'Could not export', async () => {
+        const n = await exportNodes(doc, ids);
+        return n ? `Exported ${n} file${n === 1 ? '' : 's'}` : '';
+      });
+      return;
+    }
+    case 'copyPng': {
+      const ids = selected(ctx);
+      if (ids.length) report(ctx, 'Could not copy', () => copyAsPng(doc, ids));
+      return;
+    }
+    case 'deselect':
+      return ctx.setSelection([]);
+    case 'copy': {
+      const ids = selected(ctx);
+      if (ids.length) report(ctx, 'Could not copy', async () => (await copyHtml(nodesPayload(doc, ids), links(ctx, ids)), ''));
+      return;
+    }
+    case 'copyLink':
+      report(ctx, 'Could not copy the link', async () => (await copyText(links(ctx, selected(ctx))), 'Link copied'));
+      return;
+    case 'copyHtml': {
+      const ids = selected(ctx);
+      if (!ids.length) return;
+      const html = nodesToHtml(doc, ids);
+      report(ctx, 'Could not copy', async () => (await copyHtml(html, html), 'Copied as HTML'));
+      return;
+    }
+    case 'copySvg': {
+      const svgs = selected(ctx)
+        .map((id) => doc.requireNode(id))
+        .filter((n) => n.type === 'svg' && n.svg);
+      if (svgs.length) report(ctx, 'Could not copy', async () => (await copyText(svgs.map((n) => n.svg!).join('\n')), 'Copied as SVG'));
+      return;
+    }
+    case 'copyStyles': {
+      const [id] = selected(ctx);
+      if (id && copyStyles(doc, id)) ctx.notify?.('Styles copied');
+      return;
+    }
+    case 'pasteStyles':
+      pasteStyles(doc, actor, selected(ctx));
+      return;
+    case 'removeFlex':
+      removeFlex(doc, actor, selected(ctx));
+      return;
+    case 'ungroup': {
+      const moved = ungroup(doc, actor, selected(ctx));
+      if (moved.length) ctx.setSelection(moved);
+      return;
+    }
+    case 'bringToFront':
+    case 'sendToBack':
+    case 'moveForward':
+    case 'moveBackward':
+      reorder(doc, actor, selected(ctx), command);
+      return;
+    case 'paste':
+    case 'pasteOnTop':
+    case 'pasteToReplace':
+      report(ctx, 'Could not paste', async () => {
+        const data = await readClipboard();
+        const mode = command === 'paste' ? 'paste' : command === 'pasteOnTop' ? 'on-top' : 'replace';
+        const ids = await pasteIntoDoc(doc, actor, data, { selection: ctx.getSelection(), rootId: ctx.rootId, viewportCenter: ctx.viewportCenter?.() ?? { x: 0, y: 0 }, mode });
+        if (ids.length) ctx.setSelection(ids);
+        return ids.length ? '' : 'Nothing to paste.';
+      });
+      return;
+    case 'setThumbnail': {
+      const [id] = selected(ctx);
+      const set = ctx.setThumbnail;
+      if (id && set) report(ctx, 'Could not set the thumbnail', () => set(id));
+      return;
+    }
+    case 'copyReact':
+    case 'copyTailwind': {
+      const ids = selected(ctx);
+      if (ids.length) report(ctx, 'Could not copy', () => copyAsCode(doc, ids, command === 'copyReact' ? 'inline-styles' : 'tailwind'));
+      return;
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@markup/doc": "workspace:*",
+    "@types/chrome": "^0.1.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^31.0.1"
+  }
+}

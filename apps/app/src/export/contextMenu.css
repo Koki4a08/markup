@@ -1,0 +1,103 @@
+/* Canvas right-click menu and its submenus (CopyMenu.tsx). */
+
+.canvas-menu {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  min-width: 232px;
+  max-height: calc(100vh - 8px);
+  flex-direction: column;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--border-strong, var(--border, rgba(255, 255, 255, 0.12)));
+  border-radius: 8px;
+  background: var(--popover, var(--panel, #1c1c1f));
+  box-shadow: var(--shadow-pop, 0 12px 32px -6px rgba(0, 0, 0, 0.6));
+  color: var(--text, #ededef);
+  font-size: 12px;
+  animation: canvas-menu-in 110ms ease-out;
+}
+
+.canvas-submenu {
+  min-width: 200px;
+}
+
+@keyframes canvas-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+.canvas-menu-item {
+  display: flex;
+  width: 100%;
+  min-height: 26px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 8px 0 calc(8px + var(--indent, 0) * 12px);
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.canvas-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-menu-item kbd {
+  flex-shrink: 0;
+  color: var(--text-3, var(--text-2, #8b8b94));
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-menu-chevron {
+  flex-shrink: 0;
+  margin-right: -4px;
+  color: var(--text-2, #a1a1aa);
+}
+
+.canvas-menu-item:not(:disabled):hover,
+.canvas-menu-item:not(:disabled):focus-visible,
+.canvas-menu-item:not(:disabled):focus,
+.canvas-menu-item[aria-expanded='true'] {
+  background: var(--accent-fill, var(--focus, #2f6fe8));
+  color: #fff;
+  outline: none;
+}
+
+.canvas-menu-item:not(:disabled):hover kbd,
+.canvas-menu-item:not(:disabled):focus kbd,
+.canvas-menu-item:not(:disabled):hover .canvas-menu-chevron,
+.canvas-menu-item:not(:disabled):focus .canvas-menu-chevron,
+.canvas-menu-item[aria-expanded='true'] .canvas-menu-chevron {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.canvas-menu-item:disabled {
+  color: var(--text-3, var(--text-2, #8b8b94));
+  opacity: 0.55;
+}
+
+.canvas-menu-sep {
+  height: 1px;
+  flex-shrink: 0;
+  margin: 4px 6px;
+  background: var(--border, rgba(255, 255, 255, 0.07));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-menu {
+    animation: none;
+  }
+}
