@@ -11,6 +11,8 @@ export interface LibraryItem {
   createdAt: number;
   updatedAt: number;
   thumbnail?: string;
+  /** Layer the user chose as the file's thumbnail; captured instead of the first artboard. */
+  thumbnailNodeId?: string;
 }
 
 const NAME_MAX = 500;
@@ -138,10 +140,13 @@ export class MarkupLibrary {
     return maps.map(toItem);
   }
 
-  touch(id: string, patch?: { thumbnail?: string }): void {
+  /** Bumps updatedAt. thumbnailNodeId: null forgets the chosen layer. */
+  touch(id: string, patch?: { thumbnail?: string; thumbnailNodeId?: string | null }): void {
     const m = this.require(id);
     this.ydoc.transact(() => {
       if (patch?.thumbnail !== undefined) m.set('thumbnail', patch.thumbnail);
+      if (patch?.thumbnailNodeId === null) m.delete('thumbnailNodeId');
+      else if (patch?.thumbnailNodeId !== undefined) m.set('thumbnailNodeId', patch.thumbnailNodeId);
       m.set('updatedAt', Date.now());
     });
   }
@@ -198,6 +203,7 @@ export class MarkupLibrary {
 
 function toItem(m: Y.Map<unknown>): LibraryItem {
   const thumbnail = m.get('thumbnail') as string | undefined;
+  const thumbnailNodeId = m.get('thumbnailNodeId') as string | undefined;
   return {
     id: m.get('id') as string,
     type: m.get('type') as LibraryItem['type'],
@@ -207,5 +213,6 @@ function toItem(m: Y.Map<unknown>): LibraryItem {
     createdAt: m.get('createdAt') as number,
     updatedAt: m.get('updatedAt') as number,
     ...(thumbnail !== undefined ? { thumbnail } : {}),
+    ...(thumbnailNodeId !== undefined ? { thumbnailNodeId } : {}),
   };
 }

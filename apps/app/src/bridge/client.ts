@@ -1,4 +1,6 @@
-import { MarkupError, runDocTool, type Actor, type MarkupDoc } from '@markup/doc';
+import { MarkupError, type Actor, type MarkupDoc } from '@markup/doc';
+// Through its own entry: runDocTool pulls in the protocol's zod schemas, which only the lazily loaded bridge needs.
+import { runDocTool } from '@markup/doc/tools';
 import {
   BRIDGE_PORT,
   DOM_TOOLS,
@@ -33,6 +35,8 @@ export interface BridgeOptions {
   /** Injected for Node tests; the browser global otherwise. */
   WebSocketImpl?: typeof WebSocket;
   retryMs?: number;
+  /** How long after an agent's last write its working indicator clears on its own. */
+  workingIdleMs?: number;
   /** Id of the editor's human actor; "current-user" in comment filters resolves to it. */
   currentUserId?: string;
   onStatus?(status: BridgeStatus): void;
@@ -58,6 +62,9 @@ const isResourceTool = (method: string): method is ResourceToolName => (RESOURCE
 const isFontTool = (method: string): method is FontToolName => (FONT_TOOLS as readonly string[]).includes(method);
 const isExportTool = (method: string): method is ExportToolName => (EXPORT_TOOLS as readonly string[]).includes(method);
 const isDomTool = (method: string): method is DomToolName => (DOM_TOOLS as readonly string[]).includes(method);
+
+/** An agent that has not written for this long is treated as done, even if it never called finish_working_on_nodes. */
+const WORKING_IDLE_MS = 45_000;
 
 const WRITE_TOOLS = new Set(['create_artboard', 'write_html', 'update_styles', 'set_text_content', 'duplicate_nodes', 'move_nodes', 'delete_nodes', 'rename_nodes']);
 
@@ -126,10 +133,14 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
   const agents = new Map<string, Actor>();
   let ws: WebSocket | null = null;
   let status: BridgeStatus = 'connecting';
+  let reported = false;
   let closed = false;
   let retry: ReturnType<typeof setTimeout> | null = null;
 
+  // Reports only real changes, so a hub that is not running does not re-render the app every retry.
   const setStatus = (s: BridgeStatus) => {
+    if (reported && s === status) return;
+    reported = true;
     status = s;
     opts.onStatus?.(s);
   };
@@ -153,6 +164,35 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
     throw new BridgeFailure('FILE_NOT_OPEN', 'No file is open in Markup. Call list_resources, then open_file.');
   };
 
+  /** Docs of every open tab. */
+  const openDocs = () => workspace.tabs().flatMap((t) => workspace.doc(t.fileId) ?? []);
+
+  /** Drops an agent's working indicators in every open file (or only these artboards). */
+  const release = (actor: Actor, artboardIds?: string[]) => {
+    for (const doc of openDocs()) {
+      const mine = Object.entries(doc.working()).filter(([id, a]) => a.id === actor.id && (!artboardIds || artboardIds.includes(id)));
+      if (mine.length) doc.setWorking(actor, mine.map(([id]) => id), false);
+    }
+  };
+
+  // Agents that stop writing without calling finish_working_on_nodes (or whose session ends) lose the indicator.
+  const idle = new Map<string, ReturnType<typeof setTimeout>>();
+  const keepWorking = (actor: Actor) => {
+    clearTimeout(idle.get(actor.id));
+    idle.set(
+      actor.id,
+      setTimeout(() => {
+        idle.delete(actor.id);
+        release(actor);
+      }, opts.workingIdleMs ?? WORKING_IDLE_MS),
+    );
+  };
+  const releaseAll = () => {
+    for (const t of idle.values()) clearTimeout(t);
+    idle.clear();
+    for (const doc of openDocs()) doc.clearWorking();
+  };
+
   const handle = async (msg: RequestMsg): Promise<ResponseMsg> => {
     try {
       const actor = actorFor(msg.agent);
@@ -160,7 +200,18 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
       const params = resolved.params;
       const routedFileId = msg.fileId ? (parseMarkupLink(msg.fileId)?.fileId ?? msg.fileId) : ((params.fileId as string | undefined) ?? resolved.fileId);
       let result: unknown;
-      if (isResourceTool(msg.method)) {
+      // Any call (screenshots and reads too) shows an agent that is still at work.
+      if (idle.has(actor.id) && msg.method !== 'finish_working_on_nodes') keepWorking(actor);
+      if (msg.method === 'finish_working_on_nodes') {
+        // Not routed to one tab: the agent may have worked in a file that is no longer in the foreground.
+        const nodeIds = params.nodeIds as string[] | undefined;
+        release(actor, nodeIds);
+        if (!nodeIds) {
+          clearTimeout(idle.get(actor.id));
+          idle.delete(actor.id);
+        }
+        result = { released: nodeIds ?? 'all' };
+      } else if (isResourceTool(msg.method)) {
         result = await runResourceTool(workspace, msg.method, params, { actor });
       } else if (isFontTool(msg.method)) {
         result = await runFontTool(params);
@@ -177,7 +228,10 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
           result = runDocTool(doc, actor, msg.method as DocToolName, params, { activePageId: workspace.activePageId(fileId), currentUserId: opts.currentUserId ?? 'local-user' });
           if (WRITE_TOOLS.has(msg.method)) {
             const artboards = touchedArtboards(doc, msg.method, params, result);
-            if (artboards.length) doc.setWorking(actor, artboards, true);
+            if (artboards.length) {
+              doc.setWorking(actor, artboards, true);
+              keepWorking(actor);
+            }
           }
         }
       }
@@ -190,7 +244,8 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
 
   const connect = () => {
     if (closed) return;
-    setStatus('connecting');
+    // Automatic retries stay 'offline' until one connects; only the first attempt reports 'connecting'.
+    if (status !== 'offline') setStatus('connecting');
     const socket = new WS(url);
     ws = socket;
     socket.onopen = () => {
@@ -212,6 +267,8 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
     socket.onclose = () => {
       if (ws !== socket) return;
       ws = null;
+      // Without the hub no agent can reach this editor, so nobody is editing anymore.
+      releaseAll();
       setStatus('offline');
       if (!closed) retry = setTimeout(connect, opts.retryMs ?? 2000);
     };
@@ -239,6 +296,7 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
     close() {
       closed = true;
       offChange();
+      releaseAll();
       if (retry) clearTimeout(retry);
       ws?.close();
       ws = null;

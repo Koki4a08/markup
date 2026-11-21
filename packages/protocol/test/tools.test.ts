@@ -24,10 +24,12 @@ describe('tool schemas', () => {
     expect(Object.keys(tools).sort()).toEqual(paper);
   });
 
-  it('write_html requires html, targetNodeId, mode', () => {
+  it('write_html requires html; target and mode are optional', () => {
     const schema = tools.write_html.input;
     expect(schema.safeParse({ html: '<div/>', targetNodeId: 'x', mode: 'replace' }).success).toBe(true);
-    expect(schema.safeParse({ html: '<div/>', targetNodeId: 'x' }).success).toBe(false);
+    expect(schema.safeParse({ html: '<div/>', targetNodeId: 'x' }).success).toBe(true);
+    expect(schema.safeParse({ html: '<div/>' }).success).toBe(true);
+    expect(schema.safeParse({ targetNodeId: 'x' }).success).toBe(false);
     expect(schema.safeParse({ html: '<div/>', targetNodeId: 'x', mode: 'append' }).success).toBe(false);
   });
 

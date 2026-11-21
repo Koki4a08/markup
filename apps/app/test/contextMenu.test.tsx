@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActorUndo, MarkupDoc, type Actor } from '@markup/doc';
 import { CopyMenu } from '../src/export/CopyMenu';
 import { DocProvider } from '../src/store/DocProvider';
-import { SelectionProvider, useSelection } from '../src/selection';
-import { runCommand, type CommandContext } from '../src/commands';
-import { setCopiedStyles } from '../src/canvasOps';
-import type { Command } from '../src/keyboard';
+import { SelectionProvider, useSelection } from '../src/canvas/selection';
+import { runCommand, type CommandContext } from '../src/commands/commands';
+import { setCopiedStyles } from '../src/canvas/canvasOps';
+import type { Command } from '../src/commands/keyboard';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
 
@@ -34,6 +34,7 @@ const LABELS = [
   'Move backward',
   'Show / hide',
   'Lock / unlock',
+  'Set as thumbnail',
 ];
 
 beforeEach(() => setCopiedStyles(null));
@@ -116,7 +117,7 @@ describe('canvas context menu', () => {
       .getAllByRole('menuitem')
       .map((b) => b.querySelector('.canvas-menu-label')?.textContent);
     expect(labels).toEqual(LABELS);
-    expect(within(rootMenu()).getAllByRole('separator')).toHaveLength(6);
+    expect(within(rootMenu()).getAllByRole('separator')).toHaveLength(7);
     expect(item('Copy').querySelector('kbd')?.textContent).toBe('Ctrl+C');
     expect(item('Paste').querySelector('kbd')?.textContent).toBe('Ctrl+V');
     expect(item('Copy styles').querySelector('kbd')?.textContent).toBe('Ctrl+Alt+C');

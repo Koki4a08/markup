@@ -32,7 +32,23 @@ describe('runDocTool', () => {
 
   it('invalid params returns INVALID_PARAMS', () => {
     const { run } = setup();
-    expect(() => run('write_html', { html: '<div/>' })).toThrow(expect.objectContaining({ code: 'INVALID_PARAMS' }));
+    expect(() => run('write_html', { targetNodeId: 'x' })).toThrow(expect.objectContaining({ code: 'INVALID_PARAMS' }));
+    expect(() => run('write_html', { html: '<div/>', mode: 'replace' })).toThrow(expect.objectContaining({ code: 'INVALID_PARAMS' }));
+  });
+
+  it('write_html without a target puts each top-level element on the page as its own artboard', () => {
+    const { run, doc } = setup();
+    run('create_artboard', { name: 'Desktop', styles: { width: '1440px', height: '900px' } });
+    const { nodeIds } = run('write_html', {
+      html: '<div layer-name="Button" style="width: 120px; padding: 8px"><p>Go</p></div><div layer-name="Card" style="width: 300px"></div>',
+    }) as { nodeIds: string[] };
+    expect(nodeIds).toHaveLength(2);
+    const [button, card] = nodeIds.map((id) => doc.requireNode(id));
+    expect(button!.name).toBe('Button');
+    expect(doc.requireNode(button!.parentId!).type).toBe('root');
+    expect(button!.styles).toMatchObject({ position: 'absolute', left: 1440 + 80, top: 0, width: '120px', padding: '8px' });
+    expect(card!.styles).toMatchObject({ position: 'absolute', left: 1440 + 80 + 120 + 80, top: 0 });
+    expect(run('get_basic_info', {})).toMatchObject({ artboards: [{ name: 'Desktop' }, { name: 'Button' }, { name: 'Card' }] });
   });
 
   it('get_basic_info lists artboards and tokens', () => {

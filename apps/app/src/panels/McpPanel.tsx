@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AGENT_LABELS, AGENTS, snippets, type Agent } from '@markup/mcp/snippets';
 import { copyText, inTauri } from '../export/clipboard';
 import { icons } from './icons';
+import { useDismiss } from '../ui/useDismiss';
 
 /** What the snippets show for the server binary: the editor cannot know where the user keeps `markup`. */
 export const PLACEHOLDER_PATH = '<path to markup>';
@@ -29,7 +30,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   return (
     <button
       className="icon-button"
-      title={copied ? 'Copied' : label}
+      data-tip={copied ? 'Copied' : label}
       aria-label={label}
       onClick={() => copyText(text).then(() => setCopied(true), () => setCopied(false))}
     >
@@ -43,6 +44,8 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
   const ref = useRef<HTMLDivElement>(null);
   const [runs, setRuns] = useState<Partial<Record<Agent, RunState>>>({});
   const all = snippets({ command: PLACEHOLDER_PATH, args: ['mcp'] });
+  // Resize only: it holds install output, which switching apps to check on the agent must not throw away.
+  useDismiss(onClose, { ref, blur: false, wheel: false });
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
@@ -50,8 +53,11 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         e.stopPropagation();
         onClose();
+        // Back to the toggle that opened it, as the settings menu does.
+        document.querySelector<HTMLElement>('[data-mcp-toggle]')?.focus();
       }
     };
     window.addEventListener('pointerdown', onDown);
@@ -77,7 +83,7 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
     <div className="mcp-panel" ref={ref} role="region" aria-label="Connect an agent">
       <div className="mcp-panel-head">
         <span className="mcp-panel-title">Connect an agent</span>
-        <button className="icon-button" aria-label="Close" title="Close" onClick={onClose}>
+        <button className="icon-button" aria-label="Close" data-tip="Close" onClick={onClose}>
           {icons.close}
         </button>
       </div>

@@ -13,13 +13,23 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "create": false,
         "title": "Markup",
         "width": 1440,
         "height": 900,
         "minWidth": 960,
         "minHeight": 600,
         "resizable": true,
-        "fullscreen": false
+        "center": true,
+        "visible": false,
+        "dragDropEnabled": false,
+        "generalAutofillEnabled": false,
+        "backgroundThrottling": "disabled",
+        "fullscreen": false,
+        "decorations": false,
+        "shadow": true,
+        "backgroundColor": "#0f0f10"
       }
     ],
     "security": {

@@ -1,15 +1,23 @@
-import { toPng } from 'html-to-image';
 import { MarkupError, type MarkupDoc } from '@markup/doc';
-import { tools } from '@markup/protocol';
+import type { DomToolName } from '@markup/protocol';
 import type { DomTools } from './client';
+import { nodeElementIn } from '../canvas/registry';
+import { revealsSettled } from '../canvas/deferred';
 
 const MAX_SCREENSHOT_SIDE = 2048;
 const THUMBNAIL_WIDTH = 320;
+/**
+ * Dashboard cards show the whole artboard scaled to fit a short box, so a tall artboard never shows
+ * taller than this; capping the bitmap keeps tall captured pages from storing a huge image.
+ */
+const THUMBNAIL_MAX_HEIGHT = 480;
 const COMPONENT: Record<string, string> = { frame: 'Frame', text: 'Text', image: 'Image', svg: 'SVG', root: 'Root' };
 
 const toCamel = (k: string) => k.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 
-function parse<T>(name: keyof typeof tools, params: unknown): T {
+/** The protocol's zod schemas and html-to-image load with the first agent call, not at startup. */
+async function parse<T>(name: DomToolName, params: unknown): Promise<T> {
+  const { tools } = await import('@markup/protocol');
   const r = tools[name].input.safeParse(params ?? {});
   if (!r.success) throw new MarkupError('INVALID_PARAMS', `Invalid parameters for ${name}: ${r.error.issues.map((i) => i.message).join('; ')}`);
   return r.data as T;
@@ -20,7 +28,8 @@ export function createDomTools(opts: { doc: MarkupDoc; canvas: () => HTMLElement
   const element = (id: string) => {
     const node = opts.doc.getNode(id);
     if (!node) throw new MarkupError('NODE_NOT_FOUND', `Node ${id} does not exist.`);
-    const el = opts.canvas()?.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`);
+    const root = opts.canvas();
+    const el = root ? nodeElementIn(root, id) : null;
     if (!el) throw new MarkupError('NODE_NOT_FOUND', `Node ${id} is not rendered. It is on another page than the one the user is viewing, or hidden.`);
     return el;
   };
@@ -49,13 +58,16 @@ export function createDomTools(opts: { doc: MarkupDoc; canvas: () => HTMLElement
         .map((id) => opts.doc.getNode(id))
         .filter((n) => !!n)
         .map((n) => {
-          const el = opts.canvas()?.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(n.id)}"]`);
+          const root = opts.canvas();
+          const el = root ? nodeElementIn(root, n.id) : null;
           return { id: n.id, name: n.name, component: COMPONENT[n.type], width: el?.offsetWidth ?? null, height: el?.offsetHeight ?? null, artboardId: opts.doc.artboardOf(n.id) };
         }),
     }),
 
-    get_computed_styles: (params) => {
-      const { nodeIds } = parse<{ nodeIds: string[] }>('get_computed_styles', params);
+    get_computed_styles: async (params) => {
+      const { nodeIds } = await parse<{ nodeIds: string[] }>('get_computed_styles', params);
+      // Layers an agent just wrote may still be mounting behind a placeholder.
+      await revealsSettled();
       const out: Record<string, Record<string, string>> = {};
       const defaults = new Map<string, CSSStyleDeclaration>();
       for (const id of nodeIds) {
@@ -78,12 +90,14 @@ export function createDomTools(opts: { doc: MarkupDoc; canvas: () => HTMLElement
     },
 
     get_screenshot: async (params) => {
-      const { nodeId, scale = 1 } = parse<{ nodeId: string; scale?: number }>('get_screenshot', params);
+      const { nodeId, scale = 1 } = await parse<{ nodeId: string; scale?: number }>('get_screenshot', params);
+      await revealsSettled();
       const el = element(nodeId);
       const w = el.offsetWidth;
       const h = el.offsetHeight;
       if (!w || !h) throw new MarkupError('INVALID_ARGUMENT', `Node ${nodeId} has no size to capture.`);
       const pixelRatio = Math.min(scale, MAX_SCREENSHOT_SIDE / Math.max(w, h));
+      const { toPng } = await import('html-to-image');
       const dataUrl = await toPng(el, { pixelRatio, cacheBust: true, style: { translate: 'none', margin: '0', left: '0', top: '0', position: 'relative' } });
       return { data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: 'image/png', width: Math.round(w * pixelRatio), height: Math.round(h * pixelRatio) };
     },
@@ -91,11 +105,12 @@ export function createDomTools(opts: { doc: MarkupDoc; canvas: () => HTMLElement
 }
 
 /**
- * PNG data URL of an artboard, 320px wide, for the dashboard. The element is cloned at once,
+ * Image data URL of an artboard for the dashboard: at most 320px wide and 480px tall, WebP where
+ * the webview can encode it (it keeps transparency), else PNG. The element is cloned at once,
  * so the capture still finishes when the editor unmounts right after (closing its tab).
  */
 export function captureThumbnail(canvas: HTMLElement | null, artboardId: string | undefined): Promise<string | undefined> | undefined {
-  const el = artboardId ? canvas?.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(artboardId)}"]`) : null;
+  const el = artboardId && canvas ? nodeElementIn(canvas, artboardId) : null;
   if (!el || !el.offsetWidth || !el.offsetHeight) return undefined;
   const width = el.offsetWidth;
   const height = el.offsetHeight;
@@ -105,7 +120,9 @@ export function captureThumbnail(canvas: HTMLElement | null, artboardId: string 
   host.style.cssText = 'position:fixed;left:-100000px;top:0;pointer-events:none;';
   host.appendChild(clone);
   document.body.appendChild(host);
-  return toPng(clone, { width, height, pixelRatio: THUMBNAIL_WIDTH / width })
-    .then((url) => url as string | undefined)
+  const pixelRatio = Math.min(THUMBNAIL_WIDTH / width, THUMBNAIL_MAX_HEIGHT / height);
+  return import('html-to-image')
+    .then(({ toCanvas }) => toCanvas(clone, { width, height, pixelRatio }))
+    .then((canvas) => canvas.toDataURL('image/webp', 0.85) as string | undefined)
     .finally(() => host.remove());
 }

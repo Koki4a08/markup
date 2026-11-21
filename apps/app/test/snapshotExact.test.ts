@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MarkupDoc, parseHtml, type Actor, type MarkupNode } from '@markup/doc';
-import { cleanHtml, pasteIntoDoc } from '../src/paste';
+import { cleanHtml, pasteIntoDoc } from '../src/clipboard/paste';
 // The extension's exact capture, run against its layout-free test env, piped into the app's paste path.
 import { captureExact } from '../../extension/src/capture/exact';
 import { fakeEnv } from '../../extension/test/fakeEnv';

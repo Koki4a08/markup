@@ -132,7 +132,9 @@ export function runDocTool(doc: MarkupDoc, actor: Actor, method: DocToolName, ra
     }
     case 'write_html': {
       const p = parse(method, rawParams);
-      return doc.writeHtml(actor, p.targetNodeId, p.html, p.mode);
+      if (p.targetNodeId) return doc.writeHtml(actor, p.targetNodeId, p.html, p.mode ?? 'insert-children');
+      if (p.mode === 'replace') throw new MarkupError('INVALID_PARAMS', 'Invalid parameters for write_html: mode "replace" needs a targetNodeId.');
+      return doc.writeArtboards(actor, doc.rootOf(p.pageId ?? ctx.activePageId), p.html);
     }
     case 'update_styles': {
       const p = parse(method, rawParams);

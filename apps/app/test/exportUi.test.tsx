@@ -20,12 +20,12 @@ vi.mock('../src/export/clipboard', async (orig) => ({
 }));
 
 const { Inspector } = await import('../src/panels/Inspector');
-const { SelectionProvider } = await import('../src/selection');
+const { SelectionProvider } = await import('../src/canvas/selection');
 const { DocProvider } = await import('../src/store/DocProvider');
-const { resolveShortcut } = await import('../src/keyboard');
-const { runCommand } = await import('../src/commands');
+const { resolveShortcut } = await import('../src/commands/keyboard');
+const { runCommand } = await import('../src/commands/commands');
 
-type Ctx = import('../src/commands').CommandContext;
+type Ctx = import('../src/commands/commands').CommandContext;
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
 const restore: (() => void)[] = [];
 

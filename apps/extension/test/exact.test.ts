@@ -14,7 +14,9 @@ async function exact(name: string): Promise<{ html: string; root: HTMLElement; t
   const holder = document.createElement('div');
   holder.innerHTML = html.slice(MARKER.length);
   const root = holder.firstElementChild as HTMLElement;
-  return { html, root, target: root.firstElementChild as HTMLElement };
+  // A lone target written as a frame is the snapshot root itself (placed absolutely); otherwise the root wraps it.
+  const flat = f.targets.length === 1 && styles(root).position === 'absolute';
+  return { html, root, target: (flat ? root : root.firstElementChild) as HTMLElement };
 }
 
 /** A style attribute as a map (the output uses `prop:value` joined by `;`). */
@@ -32,7 +34,7 @@ afterEach(() => {
 });
 
 describe('exact snapshot', () => {
-  it('root carries marker, dialect attr, backdrop and inherited font', async () => {
+  it('a lone target is the root: marker, dialect attr and inherited font, no wrapper or backdrop', async () => {
     document.body.setAttribute('style', 'background-color: rgb(9, 9, 9)');
     const f = exactFixture('inherited');
     document.body.innerHTML = f.html;
@@ -45,18 +47,18 @@ describe('exact snapshot', () => {
     expect(root.getAttribute('layer-name')).toBe('Acme');
     expect(root.getAttribute('data-source')).toBe(META.url);
     expect(styles(root)).toMatchObject({
-      position: 'relative',
+      position: 'absolute',
+      left: '0px',
+      top: '0px',
       width: '200px',
       height: '60px',
-      'background-color': 'rgb(9, 9, 9)',
-      color: 'rgb(0, 0, 0)',
       'font-family': 'Arial, sans-serif',
-      'font-size': '16px',
       'font-weight': '400',
       'line-height': 'normal',
     });
-    // The target is placed by the root.
-    expect(styles(root.firstElementChild)).toMatchObject({ position: 'absolute', left: '0px', top: '0px' });
+    // Its own styles follow the root's and win.
+    expect(styles(root)).toMatchObject({ color: 'rgb(10, 20, 30)', 'font-size': '14px' });
+    expect(styles(root)['background-color']).toBeUndefined();
   });
 
   it('grid layout keeps display grid and template columns', async () => {
@@ -96,10 +98,16 @@ describe('exact snapshot', () => {
     expect(styles(badge).height).toBeUndefined();
   });
 
+  it('skips screen-reader-only labels', async () => {
+    document.body.innerHTML = `<div id="t" data-rect="0 0 200 40" style="display:flex"><p data-rect="0 0 80 24">Works with</p><span data-rect="0 14 1 1" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">Claude Code, Cursor</span></div>`;
+    const html = await captureExact([document.getElementById('t')!], fakeEnv(), META);
+    expect(html).toContain('Works with');
+    expect(html).not.toContain('Claude Code');
+  });
+
   it('inherited props only where they change', async () => {
     const { target } = await exact('inherited');
     expect(styles(target)).toMatchObject({ color: 'rgb(10, 20, 30)', 'font-size': '14px' });
-    expect(styles(target)['font-family']).toBeUndefined();
     const [same, diff] = Array.from(target.children);
     expect(same!.localName).toBe('p');
     expect(styles(same).color).toBeUndefined();
@@ -198,5 +206,77 @@ describe('exact snapshot', () => {
   it('gives up on huge pages', async () => {
     document.body.innerHTML = `<div id="t" data-rect="0 0 10 10">${'<div data-rect="0 0 1 1"></div>'.repeat(30)}</div>`;
     await expect(captureExact([document.getElementById('t')!], fakeEnv(), META, { maxNodes: 10 })).rejects.toThrow(/too large/);
+  });
+});
+
+describe('exact snapshot: whole-page pass hooks', () => {
+  it('splices subtrees recorded in view back at their index when the page has since removed them', async () => {
+    document.body.innerHTML = '<div id="t" style="width:200px;height:100px"><p id="a">first</p><p id="c">third</p></div>';
+    const t = document.getElementById('t')!;
+    const env = { ...fakeEnv(), mountedSnapshots: (el: Element) => (el === t ? [{ index: 1, html: '<div data-recorded="demo">second</div>' }] : []) };
+    const html = await captureExact([t], env, META);
+    const order = ['first', 'data-recorded', 'third'].map((s) => html.indexOf(s));
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('a canvas with no pixels becomes an empty box, not the grey placeholder', async () => {
+    document.body.innerHTML = '<div id="t" style="width:200px;height:100px"><canvas id="c" width="0" height="0" style="width:120px;height:60px"></canvas></div>';
+    const html = await captureExact([document.getElementById('t')!], fakeEnv(), META);
+    expect(html).not.toContain('Image unavailable');
+  });
+
+  it('keeps animations on elements and pseudo-elements, with their keyframes on the root', async () => {
+    document.body.innerHTML = '<div id="t" style="width:200px;height:100px"><div id="a" style="opacity:1" data-before="content:&quot;&quot;;position:absolute;width:10px;height:10px;background-color:red">fade</div></div>';
+    const a = document.getElementById('a')!;
+    const fade = { label: 'fadeIn', frames: [{ offset: 0, easing: 'ease-out', props: [['opacity', '0']] as [string, string][] }, { offset: 1, easing: 'linear', props: [['opacity', '1']] as [string, string][] }], duration: 500, delay: 100, iterations: 1, direction: 'normal', fill: 'both' };
+    const spin = { ...fade, label: 'spin', frames: [{ offset: 0, easing: 'linear', props: [['rotate', '0deg']] as [string, string][] }, { offset: 1, easing: 'linear', props: [['rotate', '360deg']] as [string, string][] }], iterations: Infinity, fill: 'none', delay: 0 };
+    const env = { ...fakeEnv(), motions: (el: Element, pseudo?: string) => (el === a ? (pseudo === '::before' ? [spin] : pseudo ? [] : [fade]) : []) };
+    const html = await captureExact([document.getElementById('t')!], env, META);
+    const holder = document.createElement('div');
+    holder.innerHTML = html.slice(MARKER.length);
+    const root = holder.firstElementChild!;
+    const keyframes = root.getAttribute('data-markup-keyframes')!;
+    expect(keyframes).toMatch(/@keyframes mk-fadeIn-\w+\{0%\{opacity:0;animation-timing-function:ease-out\}100%\{opacity:1\}\}/);
+    expect(keyframes).toMatch(/@keyframes mk-spin-\w+/);
+    const el = root.querySelector('[style*="mk-fadeIn"]');
+    expect(styles(el)).toMatchObject({ 'animation-duration': '500ms', 'animation-delay': '100ms', 'animation-fill-mode': 'both' });
+    expect(styles(root.querySelector('[style*="mk-spin"]'))['animation-iteration-count']).toBe('infinite');
+  });
+
+  it('keeps mask fades and gradient text', async () => {
+    document.body.innerHTML = '<div id="t" style="width:200px;height:100px;mask-image:linear-gradient(black, transparent);mask-size:100% 50%;-webkit-text-fill-color:transparent;perspective:800px"><p>Hi</p></div>';
+    const html = await captureExact([document.getElementById('t')!], fakeEnv(), META);
+    expect(html).toContain('mask-image:linear-gradient(black, transparent)');
+    expect(html).toContain('-webkit-mask-image:linear-gradient(black, transparent)');
+    expect(html).toContain('mask-size:100% 50%');
+    expect(html).toContain('-webkit-text-fill-color:transparent');
+    expect(html).toContain('perspective:800px');
+  });
+
+  it('a shader recorded as a clip beats its still frame', async () => {
+    document.body.innerHTML = '<div id="t" style="width:200px;height:100px"><canvas id="c" width="10" height="10" style="width:120px;height:60px"></canvas></div>';
+    const clip = 'data:image/webp;base64,UklGRgAAAABXRUJQ';
+    const env = { ...fakeEnv(), canvasFrame: () => PNG, motionClip: () => clip };
+    const html = await captureExact([document.getElementById('t')!], env, META);
+    expect(html).toContain(clip);
+    expect(html).not.toContain(PNG.slice(0, 40));
+  });
+
+  it('prefers a canvas frame recorded during the pass', async () => {
+    document.body.innerHTML = '<div id="t" style="width:200px;height:100px"><canvas id="c" width="10" height="10" style="width:120px;height:60px"></canvas></div>';
+    const env = { ...fakeEnv(), canvasFrame: () => PNG };
+    const html = await captureExact([document.getElementById('t')!], env, META);
+    expect(html).toContain(PNG.slice(0, 40));
+  });
+});
+
+describe('collapsed content', () => {
+  it('leaves out what a closed <details>, hidden="until-found" or content-visibility: hidden do not paint', async () => {
+    const { html } = await exact('collapsed content');
+    expect(html).toContain('Question one');
+    expect(html).toContain('Question two');
+    expect(html).toContain('Shown answer two');
+    for (const hidden of ['Hidden answer one', 'Loose hidden text', 'Hidden until found', 'Hidden by content-visibility']) expect(html).not.toContain(hidden);
   });
 });

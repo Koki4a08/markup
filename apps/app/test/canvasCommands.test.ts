@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActorUndo, MarkupDoc, type Actor } from '@markup/doc';
-import { runCommand, type CommandContext } from '../src/commands';
+import { runCommand, type CommandContext } from '../src/commands/commands';
 import { NODES_MARKER, nodesToHtml } from '../src/clipboard/nodes';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { startHub, type Hub } from '@markup/mcp';
-import { connectBridge, type BridgeConnection } from '../src/bridge/client';
+import { connectBridge, type BridgeConnection, type BridgeOptions } from '../src/bridge/client';
 import { memoryWorkspace } from './memoryWorkspace';
 
 const agent = { clientId: 'c1', name: 'Claude Code' };
@@ -20,7 +20,7 @@ const waitFor = async (check: () => boolean, ms = 2000) => {
   }
 };
 
-async function setup() {
+async function setup(extra: Partial<BridgeOptions> = {}) {
   const p = port++;
   const hub: Hub = await startHub(p);
   cleanups.push(() => hub.close());
@@ -32,6 +32,7 @@ async function setup() {
     url: `ws://127.0.0.1:${p}`,
     WebSocketImpl: WebSocket as unknown as typeof globalThis.WebSocket,
     retryMs: 50,
+    ...extra,
   });
   cleanups.push(() => bridge.close());
   await waitFor(() => bridge.status() === 'connected');
@@ -73,6 +74,22 @@ describe('bridge client', () => {
     expect(doc.working()[nodeId]).toMatchObject({ id: 'agent:c1' });
   });
 
+  it('finish_working_on_nodes clears the indicator even after another tab came to the front', async () => {
+    const { hub, bridge, addFile, doc } = await setup();
+    const { nodeId } = (await hub.request({ method: 'create_artboard', params: { name: 'Hero', styles: { width: '10px', height: '10px' } }, agent })) as { nodeId: string };
+    expect(doc.working()[nodeId]).toBeDefined();
+    await hub.request({ method: 'open_file', params: { fileId: addFile('Pricing') }, agent });
+    await bridge.handle({ type: 'request', id: 'r1', method: 'finish_working_on_nodes', params: {}, agent });
+    expect(doc.working()).toEqual({});
+  });
+
+  it('clears an agent working indicator after it goes idle', async () => {
+    const { hub, doc } = await setup({ workingIdleMs: 60 });
+    const { nodeId } = (await hub.request({ method: 'create_artboard', params: { name: 'A', styles: { width: '10px', height: '10px' } }, agent })) as { nodeId: string };
+    expect(doc.working()[nodeId]).toBeDefined();
+    await waitFor(() => !doc.working()[nodeId]);
+  });
+
   it('resolves markup:// node links to the node and routes by the link file', async () => {
     const { hub, bridge, addFile, doc, workspace } = await setup();
     const pricing = addFile('Pricing');
@@ -104,6 +121,27 @@ describe('bridge client', () => {
   it('doc errors come back with their code', async () => {
     const { hub } = await setup();
     await expect(hub.request({ method: 'get_node_info', params: { nodeId: 'nope' }, agent })).rejects.toMatchObject({ code: 'NODE_NOT_FOUND' });
+  });
+
+  it('reports status only when it changes, and stays offline across retries with no hub', async () => {
+    const ws = memoryWorkspace();
+    const statuses: string[] = [];
+    // A port nothing listens on: every attempt fails and is retried.
+    const bridge = connectBridge({
+      workspace: ws.workspace,
+      url: `ws://127.0.0.1:${port++}`,
+      WebSocketImpl: WebSocket as unknown as typeof globalThis.WebSocket,
+      retryMs: 10,
+      onStatus: (s) => statuses.push(s),
+    });
+    cleanups.push(() => bridge.close());
+    await waitFor(() => bridge.status() === 'offline');
+    await new Promise((r) => setTimeout(r, 120));
+    expect(statuses).toEqual(['connecting', 'offline']);
+    const hub = await startHub(port - 1);
+    cleanups.push(() => hub.close());
+    await waitFor(() => bridge.status() === 'connected');
+    expect(statuses).toEqual(['connecting', 'offline', 'connected']);
   });
 
   it('reconnects after hub restart', async () => {

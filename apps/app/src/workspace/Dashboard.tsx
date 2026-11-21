@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import type { LibraryItem } from '@markup/doc';
 import { icons } from '../panels/icons';
 import { useLibraryItems, useWorkspace } from './WorkspaceProvider';
+import { isFreshFocus, keepEditingAcrossWindowBlur } from '../ui/windowFocus';
+import { useDismiss } from '../ui/useDismiss';
 
 type View = { kind: 'folder'; id: string | null } | { kind: 'archive' };
 
@@ -10,6 +12,8 @@ interface Menu {
   x: number;
   y: number;
   moving: boolean;
+  /** What opened the menu; Escape gives it focus back. */
+  trigger: HTMLElement | null;
 }
 
 const byKindThenRecent = (a: LibraryItem, b: LibraryItem) => (a.type === b.type ? b.updatedAt - a.updatedAt : a.type === 'folder' ? -1 : 1);
@@ -24,6 +28,9 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The file being read from storage: its card shimmers so a big file never looks like a dead click.
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [layout, setLayout] = useLayoutPreference();
 
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const folders = useMemo(() => items.filter((i) => i.type === 'folder' && !i.archived), [items]);
@@ -61,8 +68,13 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
       setView({ kind: 'folder', id: item.id });
       return;
     }
+    setOpeningId(item.id);
     void run(async () => {
-      await workspace.open(item.id);
+      try {
+        await workspace.open(item.id);
+      } finally {
+        setOpeningId((id) => (id === item.id ? null : id));
+      }
       onOpened();
     });
   };
@@ -143,6 +155,13 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
             <span className="sr-only">Search all folders</span>
             <input type="search" placeholder="Search all folders" value={query} onChange={(e) => setQuery(e.target.value)} />
           </label>
+          <div className="segmented is-icons" role="radiogroup" aria-label="View as">
+            {(['grid', 'list'] as const).map((l) => (
+              <button key={l} role="radio" aria-checked={layout === l} aria-label={l === 'grid' ? 'Grid' : 'List'} data-tip={l === 'grid' ? 'Grid' : 'List'} className={`segment is-icon ${layout === l ? 'is-active' : ''}`} onClick={() => setLayout(l)}>
+                {l === 'grid' ? icons.home : icons.list}
+              </button>
+            ))}
+          </div>
           <button className="text-button" onClick={() => void newFolder()}>
             New folder
           </button>
@@ -159,15 +178,28 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
         )}
 
         {shown.length === 0 ? (
-          <p className="empty-hint">{empty}</p>
+          q || view.kind === 'archive' ? (
+            <p className="empty-hint">{empty}</p>
+          ) : (
+            <div className="dashboard-empty">
+              <span className="panel-empty-icon">{view.id ? icons.folder : icons.file}</span>
+              <p className="panel-empty-title">{view.id ? 'This folder is empty' : 'No files yet'}</p>
+              <p className="panel-empty-text">{view.id ? 'Create a file here, or move one in from its menu.' : 'A file holds pages of artboards that you and connected agents edit together.'}</p>
+              <button className="primary-button" onClick={() => void newFile()}>
+                {icons.plus}
+                New file
+              </button>
+            </div>
+          )
         ) : (
-          <ul className="file-grid">
+          <ul className={layout === 'list' ? 'file-list' : 'file-grid'}>
             {shown.map((item) => (
               <li key={item.id}>
                 <Card
                   item={item}
                   location={q ? locationOf(item, byId) : null}
                   renaming={renamingId === item.id}
+                  opening={openingId === item.id}
                   onOpen={() => openItem(item)}
                   onRename={(name) => {
                     setRenamingId(null);
@@ -175,7 +207,7 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
                   }}
                   onCancelRename={() => setRenamingId(null)}
                   onStartRename={() => setRenamingId(item.id)}
-                  onMenu={(x, y) => setMenu({ item, x, y, moving: false })}
+                  onMenu={(x, y, trigger) => setMenu({ item, x, y, moving: false, trigger })}
                 />
               </li>
             ))}
@@ -244,6 +276,7 @@ function Card({
   item,
   location,
   renaming,
+  opening = false,
   onOpen,
   onRename,
   onCancelRename,
@@ -253,11 +286,12 @@ function Card({
   item: LibraryItem;
   location: string | null;
   renaming: boolean;
+  opening?: boolean;
   onOpen(): void;
   onRename(name: string): void;
   onCancelRename(): void;
   onStartRename(): void;
-  onMenu(x: number, y: number): void;
+  onMenu(x: number, y: number, trigger: HTMLElement | null): void;
 }) {
   const done = useRef(false);
   useEffect(() => {
@@ -276,10 +310,11 @@ function Card({
   };
   return (
     <div
-      className={`file-card ${item.type === 'folder' ? 'is-folder' : ''}`}
+      className={`file-card ${item.type === 'folder' ? 'is-folder' : ''} ${opening ? 'is-opening' : ''}`}
+      aria-busy={opening || undefined}
       onContextMenu={(e) => {
         e.preventDefault();
-        onMenu(e.clientX, e.clientY);
+        onMenu(e.clientX, e.clientY, e.currentTarget.querySelector<HTMLElement>('.file-card-open'));
       }}
     >
       <button className="file-card-open" onClick={onOpen} onKeyDown={onKey} aria-label={`Open ${item.name}`} disabled={item.type === 'folder' && item.archived}>
@@ -292,7 +327,7 @@ function Card({
             defaultValue={item.name}
             aria-label="Name"
             autoFocus
-            onFocus={(e) => e.currentTarget.select()}
+            onFocus={(e) => isFreshFocus(e.currentTarget) && e.currentTarget.select()}
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit(e.currentTarget.value);
               if (e.key === 'Escape') {
@@ -300,10 +335,11 @@ function Card({
                 onCancelRename();
               }
             }}
-            onBlur={(e) => commit(e.currentTarget.value)}
+            // Switching to another app keeps the rename open; only a blur inside the app commits it.
+            onBlur={(e) => keepEditingAcrossWindowBlur(e.currentTarget) || commit(e.currentTarget.value)}
           />
         ) : (
-          <span className="file-card-name" title={item.name}>
+          <span className="file-card-name">
             {item.name}
           </span>
         )}
@@ -315,13 +351,36 @@ function Card({
         aria-haspopup="menu"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
-          onMenu(r.right, r.bottom);
+          onMenu(r.right, r.bottom, e.currentTarget);
         }}
       >
         {icons.more}
       </button>
     </div>
   );
+}
+
+type Layout = 'grid' | 'list';
+const LAYOUT_KEY = 'markup:dashboard-layout';
+
+/** Grid or list, remembered on this machine. */
+function useLayoutPreference(): [Layout, (l: Layout) => void] {
+  const [layout, setLayout] = useState<Layout>(() => {
+    try {
+      return localStorage.getItem(LAYOUT_KEY) === 'list' ? 'list' : 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+  const set = (l: Layout) => {
+    setLayout(l);
+    try {
+      localStorage.setItem(LAYOUT_KEY, l);
+    } catch {
+      // Storage unavailable: the choice lasts for this session only.
+    }
+  };
+  return [layout, set];
 }
 
 function formatWhen(ms: number): string {
@@ -353,15 +412,24 @@ function ContextMenu({
   onArchive(): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  useDismiss(onClose, { ref });
   useEffect(() => {
     ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
   }, [menu.moving]);
+  const trigger = menu.trigger;
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
+    // Capture phase, so Escape closes only the menu and never reaches the dashboard or a shortcut.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        if (trigger?.isConnected) trigger.focus();
+        return;
+      }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         const buttons = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
         const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -370,12 +438,12 @@ function ContextMenu({
       }
     };
     window.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('pointerdown', onDown);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
     };
-  }, [onClose]);
+  }, [onClose, trigger]);
 
   const { item } = menu;
   const left = Math.min(menu.x || 240, window.innerWidth - 220);

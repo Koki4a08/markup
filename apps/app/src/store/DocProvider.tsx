@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { ActorUndo, type Actor, type MarkupDoc } from '@markup/doc';
+import { retainEmbeddedFonts } from '../fonts/embeddedFonts';
 
 interface DocContextValue {
   doc: MarkupDoc;
@@ -13,6 +14,8 @@ const DocContext = createContext<DocContextValue | null>(null);
 export function DocProvider({ doc, actor, undo: given, children }: { doc: MarkupDoc; actor: Actor; undo?: ActorUndo; children: ReactNode }) {
   const own = useMemo(() => (given ? null : new ActorUndo(doc, actor)), [doc, actor, given]);
   useEffect(() => () => own?.destroy(), [own]);
+  // The file's embedded web fonts (from page snapshots) apply while it is shown or exported.
+  useEffect(() => retainEmbeddedFonts(doc), [doc]);
   const undo = given ?? own!;
   const value = useMemo(() => ({ doc, actor, undo }), [doc, actor, undo]);
   return <DocContext.Provider value={value}>{children}</DocContext.Provider>;

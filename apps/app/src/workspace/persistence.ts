@@ -98,12 +98,16 @@ export function saveTabs(workspace: Workspace) {
   writeStorage(TABS_KEY, JSON.stringify({ open: workspace.tabs().map((t) => t.fileId), active: workspace.activeFileId() }));
 }
 
-export async function restoreTabs(workspace: Workspace): Promise<void> {
+/**
+ * Reopens the saved tabs. Resolves once the tab in front is open, so the app can render; the
+ * others keep loading in the background, in their saved places, until `done` settles.
+ */
+export async function restoreTabs(workspace: Workspace): Promise<{ done: Promise<void> }> {
   let saved: { open?: unknown; active?: unknown } = {};
   try {
     saved = JSON.parse(readStorage(TABS_KEY) ?? '{}') as typeof saved;
   } catch {
-    return;
+    return { done: Promise.resolve() };
   }
   const ids = Array.isArray(saved.open) ? saved.open.filter((id): id is string => typeof id === 'string') : [];
   // First run after the foundation: reopen its file so nothing seems lost.
@@ -111,10 +115,9 @@ export async function restoreTabs(workspace: Workspace): Promise<void> {
     const last = readStorage(LAST_KEY);
     if (last && workspace.library.get(last)) ids.push(last);
   }
-  for (const id of ids) {
+  const restorable = ids.filter((id) => {
     const item = workspace.library.get(id);
-    if (!item || item.archived) continue;
-    await workspace.open(id).catch(() => undefined);
-  }
-  if (typeof saved.active === 'string' && workspace.doc(saved.active)) workspace.activate(saved.active);
+    return item && !item.archived;
+  });
+  return workspace.restore(restorable, typeof saved.active === 'string' ? saved.active : undefined);
 }

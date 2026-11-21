@@ -1,8 +1,11 @@
 import { useEffect, useLayoutEffect, useState, type RefObject } from 'react';
-import { measureNode, unionRects, type Rect } from './geometry';
+import { measureNode, sameRects, unionRects, type Rect } from './geometry';
 import type { Handle } from './interactions';
-import { worldToScreen, type Viewport } from './viewport';
+import { useStore, useTick, type TickStore, type ViewportStore } from './store';
+import { worldToScreen } from './viewport';
 import { useDoc } from '../store/DocProvider';
+import { subscribePreview } from './preview';
+import { layoutTick, watchLayout } from './layoutTick';
 
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
@@ -18,7 +21,16 @@ export function useDocTick(): number {
   useEffect(() => {
     const bump = () => setTick((t) => t + 1);
     doc.ydoc.on('afterTransaction', bump);
-    return () => doc.ydoc.off('afterTransaction', bump);
+    // Live previews move nodes without a transaction; overlays re-measure for those too.
+    const unsubscribe = subscribePreview(bump);
+    // So do font and image loads and inline text edits, which change layout outside the document.
+    watchLayout();
+    const unsubscribeLayout = layoutTick.subscribe(bump);
+    return () => {
+      doc.ydoc.off('afterTransaction', bump);
+      unsubscribe();
+      unsubscribeLayout();
+    };
   }, [doc]);
   return tick;
 }
@@ -26,21 +38,28 @@ export function useDocTick(): number {
 interface Props {
   canvasRef: RefObject<HTMLDivElement | null>;
   ids: string[];
-  viewport: Viewport;
+  viewport: ViewportStore;
   /** Bumped by gestures while dragging so the overlay follows the live preview. */
-  dragTick: number;
+  dragTick: TickStore;
   onHandleDown?: (handle: Handle, e: React.PointerEvent) => void;
 }
 
-export function SelectionOverlay({ canvasRef, ids, viewport, dragTick, onHandleDown }: Props) {
+export function SelectionOverlay({ canvasRef, ids, viewport: viewportStore, dragTick: dragStore, onHandleDown }: Props) {
   const tick = useDocTick();
+  const viewport = useStore(viewportStore);
+  const dragTick = useTick(dragStore);
   const [rects, setRects] = useState<Rect[]>([]);
 
+  // World rects do not depend on pan or zoom: measured only when the selection, document or a drag changes,
+  // and projected to the screen from the current viewport at render.
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    setRects(ids.map((id) => measureNode(canvas, id, viewport)).filter((r): r is Rect => r !== null));
-  }, [canvasRef, ids, viewport, tick, dragTick]);
+    const v = viewportStore.get();
+    const origin = canvas.getBoundingClientRect();
+    const next = ids.map((id) => measureNode(canvas, id, v, origin)).filter((r): r is Rect => r !== null);
+    setRects((prev) => (sameRects(prev, next) ? prev : next));
+  }, [canvasRef, ids, viewportStore, tick, dragTick]);
 
   const box = unionRects(rects);
   if (!box) return null;

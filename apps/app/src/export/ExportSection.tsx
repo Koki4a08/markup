@@ -15,7 +15,8 @@ export function ExportSection({ nodes }: { nodes: MarkupNode[] }) {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const single = nodes.length === 1 ? nodes[0]! : null;
-  const settings = useDeep(doc.nodes, () => (single ? doc.exportsOf(single.id) : []));
+  const singleId = single?.id;
+  const settings = useDeep(doc.nodes, () => (singleId ? doc.exportsOf(singleId) : []), [doc, singleId]);
   const write = (next: ExportSetting[]) => single && doc.setExports(actor, single.id, next);
   const patch = (i: number, change: Partial<ExportSetting>) => write(settings.map((s, j) => (j === i ? { ...s, ...change } : s)));
 
@@ -79,7 +80,7 @@ function ExportRow({ index, setting, onChange, onRemove }: { index: number; sett
         list={listId}
         value={scale}
         spellCheck={false}
-        title="A multiplier like 2x, or a size like 512w, 512h or 1080p"
+        data-tip="A multiplier like 2x, or a size like 512w, 512h or 1080p"
         onChange={(e) => setScale(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {

@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { LibraryItem } from '@markup/doc';
-import { connectBridge, type BridgeStatus, type DomTools } from '../bridge/client';
+import type { BridgeStatus, DomTools } from '../bridge/client';
+import { useStableSnapshot } from '../store/hooks';
 import type { Tab, Workspace } from './Workspace';
 
 /** What a mounted editor offers for its file: canvas tools for agents, and a thumbnail. */
@@ -35,10 +36,28 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 export function WorkspaceProvider({ workspace, surfaces, children }: { workspace: Workspace; surfaces: Surfaces; children: ReactNode }) {
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>('connecting');
   useEffect(() => {
-    const bridge = connectBridge({ workspace, domTools: (fileId) => surfaces.get(fileId)?.domTools, onStatus: setBridgeStatus });
-    return () => bridge.close();
+    // Retries after a failed attempt report 'connecting' again every couple of seconds; both states
+    // read as offline, so keep 'offline' instead of re-rendering every consumer on each retry.
+    const onStatus = (next: BridgeStatus) => setBridgeStatus((prev) => (next === 'connecting' && prev === 'offline' ? prev : next));
+    // The bridge (agent tools, the protocol's zod schemas) loads after the first paint, off the startup path.
+    let closed = false;
+    let bridge: { close(): void } | undefined;
+    void import('../bridge/client').then(
+      ({ connectBridge }) => {
+        if (!closed) bridge = connectBridge({ workspace, domTools: (fileId) => surfaces.get(fileId)?.domTools, onStatus });
+      },
+      (err: unknown) => {
+        console.error('Could not load the agent bridge', err);
+        if (!closed) setBridgeStatus('offline');
+      },
+    );
+    return () => {
+      closed = true;
+      bridge?.close();
+    };
   }, [workspace, surfaces]);
-  return <WorkspaceContext.Provider value={{ workspace, surfaces, bridgeStatus }}>{children}</WorkspaceContext.Provider>;
+  const value = useMemo(() => ({ workspace, surfaces, bridgeStatus }), [workspace, surfaces, bridgeStatus]);
+  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 
 export function useWorkspace(): WorkspaceContextValue {
@@ -47,24 +66,23 @@ export function useWorkspace(): WorkspaceContextValue {
   return ctx;
 }
 
-/** Snapshot that keeps its identity while its JSON is unchanged. */
-function useStable<T>(subscribe: (fn: () => void) => () => void, read: () => T): T {
-  const cache = useRef<{ key: string; value: T } | null>(null);
-  const readRef = useRef(read);
-  readRef.current = read;
-  const get = useCallback(() => {
-    const value = readRef.current();
-    const key = JSON.stringify(value);
-    if (!cache.current || cache.current.key !== key) cache.current = { key, value };
-    return cache.current.value;
-  }, []);
-  return useSyncExternalStore(subscribe, get, get);
-}
+const NO_DEPS: readonly unknown[] = [];
 
 export function useTabs(): Tab[] {
   const { workspace } = useWorkspace();
-  const subscribe = useCallback((fn: () => void) => workspace.on('change', fn), [workspace]);
-  return useStable(subscribe, () => workspace.tabs());
+  // Tab names come from the library, which renames without a workspace 'change'.
+  const subscribe = useCallback(
+    (fn: () => void) => {
+      const off = workspace.on('change', fn);
+      workspace.library.ydoc.on('update', fn);
+      return () => {
+        off();
+        workspace.library.ydoc.off('update', fn);
+      };
+    },
+    [workspace],
+  );
+  return useStableSnapshot(subscribe, () => workspace.tabs(), NO_DEPS);
 }
 
 /** Every library item, archived ones included; re-renders on any library change. */
@@ -77,5 +95,5 @@ export function useLibraryItems(): LibraryItem[] {
     },
     [workspace],
   );
-  return useStable(subscribe, () => workspace.library.all());
+  return useStableSnapshot(subscribe, () => workspace.library.all(), NO_DEPS);
 }

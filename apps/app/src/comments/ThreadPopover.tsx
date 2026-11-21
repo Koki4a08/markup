@@ -76,7 +76,7 @@ export function ThreadPopover({ thread, left, top, onClose, onCreate }: Props) {
                 <strong>{m.authorName}</strong>
                 <span className="comment-time">{timeAgo(m.createdAt)}</span>
                 {m.authorId === actor.id && (
-                  <button className="icon-button" aria-label="Delete message" title="Delete message" onClick={() => doc.deleteMessage(actor, thread.id, m.id)}>
+                  <button className="icon-button" aria-label="Delete message" data-tip="Delete message" onClick={() => doc.deleteMessage(actor, thread.id, m.id)}>
                     {icons.trash}
                   </button>
                 )}

@@ -15,7 +15,7 @@ export interface WorkspaceOptions {
   createDoc(name: string, cloneOf?: MarkupDoc): Promise<MarkupDoc>;
   /** Called once the workspace stops using a doc it got from openDoc/createDoc. */
   releaseDoc?(doc: MarkupDoc): void;
-  /** PNG data URL of the file's first artboard, when its editor is on screen. Called synchronously on close. */
+  /** Image data URL of the file's first artboard, when its editor is on screen. Called synchronously on close. */
   captureThumbnail?(fileId: string): Promise<string | undefined> | undefined;
   /** Debounce for library updatedAt after doc edits. Default 2 s. */
   touchDelayMs?: number;
@@ -73,6 +73,9 @@ export class Workspace {
   private readonly opening = new Map<string, Promise<MarkupDoc>>();
   private order: string[] = [];
   private active: string | null = null;
+  /** Files loading through restore(): they open without coming to the front. */
+  private readonly background = new Set<string>();
+  private disposed = false;
   private readonly listeners = new Set<() => void>();
   private readonly revealListeners = new Set<(fileId: string) => void>();
 
@@ -102,6 +105,8 @@ export class Workspace {
    */
   async open(fileId: string, pageId?: string): Promise<MarkupDoc> {
     const existing = this.openTabs.get(fileId);
+    // Joining a restore() load: that load leaves the tab in the back, but an explicit open brings it forward.
+    const joinsBackground = !existing && this.background.has(fileId);
     let doc: MarkupDoc;
     if (existing) {
       this.activate(fileId);
@@ -113,6 +118,7 @@ export class Workspace {
         this.opening.set(fileId, pending);
       }
       doc = await pending;
+      if (joinsBackground && this.openTabs.get(fileId)?.doc === doc) this.activate(fileId);
     }
     // Skip the reveal if the tab was closed while it was opening.
     if (this.openTabs.get(fileId)?.doc === doc) for (const fn of [...this.revealListeners]) fn(fileId);
@@ -238,8 +244,49 @@ export class Workspace {
     return () => set.delete(fn);
   }
 
+  /**
+   * Reopens the tabs of an earlier session in the order given. Only the tab to show first is awaited:
+   * activeId when it is in ids, else the last id (the one opening them in turn would leave in front).
+   * The others load in parallel in the background and take their place in that order without coming
+   * to the front; `done` settles once they all have. If the first one fails to open, everything is
+   * awaited and the last tab that opened comes to the front, as opening them in turn would do.
+   */
+  async restore(ids: string[], activeId?: string): Promise<{ done: Promise<void> }> {
+    const unique = [...new Set(ids)];
+    if (!unique.length) return { done: Promise.resolve() };
+    const first = activeId !== undefined && unique.includes(activeId) ? activeId : unique[unique.length - 1]!;
+    const rank = new Map(unique.map((id, i) => [id, i]));
+    const opened = await this.open(first).then(
+      () => true,
+      () => false,
+    );
+    const rest = unique.filter((id) => id !== first);
+    // Only when the first tab failed: otherwise active is null because the user closed tabs meanwhile,
+    // and the dashboard they are on must stay.
+    const done = Promise.all(rest.map((id) => this.loadInBackground(id, rank).catch(() => undefined))).then(() => {
+      if (!opened && !this.disposed && this.active === null && this.order.length) this.activate(this.order[this.order.length - 1]!);
+    });
+    if (!opened) await done;
+    return { done };
+  }
+
+  private loadInBackground(fileId: string, rank: Map<string, number>): Promise<unknown> {
+    if (this.disposed || this.openTabs.has(fileId)) return Promise.resolve();
+    let pending = this.opening.get(fileId);
+    if (!pending) {
+      this.background.add(fileId);
+      pending = this.load(fileId, undefined, rank).finally(() => {
+        this.opening.delete(fileId);
+        this.background.delete(fileId);
+      });
+      this.opening.set(fileId, pending);
+    }
+    return pending;
+  }
+
   /** Releases every open doc without notifying listeners; for teardown. */
   dispose(): void {
+    this.disposed = true;
     this.library.ydoc.off('update', this.closeArchived);
     for (const fileId of [...this.order]) {
       const tab = this.openTabs.get(fileId)!;
@@ -260,10 +307,15 @@ export class Workspace {
     return item;
   }
 
-  private async load(fileId: string, pageId?: string): Promise<MarkupDoc> {
+  /** rank: a restore() load, placed by that order and left in the back. */
+  private async load(fileId: string, pageId?: string, rank?: Map<string, number>): Promise<MarkupDoc> {
     const item = this.requireFile(fileId);
     if (item.archived) throw archivedFileError(fileId);
     const doc = await this.opts.openDoc(fileId);
+    if (rank && this.disposed) {
+      this.opts.releaseDoc?.(doc);
+      throw new MarkupError('INVALID_ARGUMENT', 'The workspace was closed.');
+    }
     if (this.isArchived(fileId)) {
       this.opts.releaseDoc?.(doc);
       throw archivedFileError(fileId);
@@ -286,8 +338,15 @@ export class Workspace {
     doc.ydoc.on('update', onUpdate);
     tab.unsubscribe = () => doc.ydoc.off('update', onUpdate);
     this.openTabs.set(fileId, tab);
-    this.order.push(fileId);
-    this.active = fileId;
+    if (rank) {
+      // Before the first tab that comes later in the restored order, or that the restore did not open.
+      const mine = rank.get(fileId)!;
+      const at = this.order.findIndex((id) => (rank.get(id) ?? Number.POSITIVE_INFINITY) > mine);
+      this.order.splice(at < 0 ? this.order.length : at, 0, fileId);
+    } else {
+      this.order.push(fileId);
+      this.active = fileId;
+    }
     this.emit();
     return doc;
   }

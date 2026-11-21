@@ -4,7 +4,7 @@ import { useDeep } from '../store/hooks';
 
 export function useThreads(): CommentThread[] {
   const { doc } = useDoc();
-  return useDeep(doc.ydoc.getArray('comments'), () => doc.threads());
+  return useDeep(doc.ydoc.getArray('comments'), () => doc.threads(), [doc]);
 }
 
 export function timeAgo(at: number, now = Date.now()): string {

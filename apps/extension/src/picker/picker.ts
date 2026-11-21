@@ -22,6 +22,9 @@ export class Picker {
     this.win = doc.defaultView!;
   }
 
+  /** Called whenever the picker stops (Escape, toggle, or after a capture). */
+  onStop: (() => void) | null = null;
+
   get active(): boolean {
     return this.overlay !== null;
   }
@@ -47,6 +50,7 @@ export class Picker {
     for (const t of SWALLOWED) this.win.removeEventListener(t, this.swallow, true);
     this.overlay.destroy();
     this.overlay = null;
+    this.onStop?.();
     this.target = null;
     this.selected = [];
     this.path = [];
@@ -54,6 +58,18 @@ export class Picker {
 
   toast(message: string, error = false): void {
     this.overlay?.toast(message, error);
+  }
+
+  /** Hides the picker chrome while a capture works in the background (and shows it again). */
+  setChromeVisible(visible: boolean): void {
+    this.overlay?.setVisible(visible);
+  }
+
+  /** Back to picking after a capture failed: the copied outlines stop pulsing. */
+  idle(): void {
+    this.overlay?.setVisible(true);
+    this.overlay?.showSelected(this.selected);
+    this.overlay?.highlight(this.target);
   }
 
   private refresh = (): void => {
@@ -131,6 +147,7 @@ export class Picker {
   };
 
   private emit(targets: CaptureTargets, simplified: boolean): void {
+    if (targets !== 'page') this.overlay?.showCapturing(targets);
     if (simplified) this.onCapture(targets, 'simplified');
     else this.onCapture(targets);
   }

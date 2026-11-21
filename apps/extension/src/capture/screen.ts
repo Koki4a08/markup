@@ -1,4 +1,5 @@
 /// <reference types="chrome" />
+import { canvasPng } from './images';
 
 export interface ViewState {
   scrollX: number;
@@ -29,6 +30,8 @@ const nextFrame = () => new Promise<void>((resolve) => {
  */
 export function screenRegions(win: Window = window): (rect: DOMRect) => Promise<string | null> {
   let shot: Promise<HTMLImageElement | null> | null = null;
+  /** The view the screenshot shows: the whole-page pass can ask mid-scroll, and the capture again after. */
+  let shotView = '';
   const take = async (): Promise<HTMLImageElement | null> => {
     const hosts = [...win.document.querySelectorAll<HTMLElement>('[data-markup-snapshot]')];
     const previous = hosts.map((h) => h.style.visibility);
@@ -51,6 +54,11 @@ export function screenRegions(win: Window = window): (rect: DOMRect) => Promise<
     const view = { scrollX: win.scrollX, scrollY: win.scrollY, width: win.innerWidth, height: win.innerHeight };
     // Decide before taking the screenshot, so captures with only fetchable images never take one.
     if (!viewportCrop(rect, view, { width: view.width, height: view.height })) return null;
+    const key = `${view.scrollX},${view.scrollY},${view.width},${view.height}`;
+    if (key !== shotView) {
+      shot = null;
+      shotView = key;
+    }
     const img = await (shot ??= take());
     if (!img) return null;
     const crop = viewportCrop(rect, view, { width: img.naturalWidth, height: img.naturalHeight });
@@ -59,6 +67,6 @@ export function screenRegions(win: Window = window): (rect: DOMRect) => Promise<
     canvas.width = crop.sw;
     canvas.height = crop.sh;
     canvas.getContext('2d')?.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.sw, crop.sh);
-    return canvas.toDataURL('image/png');
+    return canvasPng(canvas);
   };
 }

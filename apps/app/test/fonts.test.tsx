@@ -2,6 +2,7 @@ import { render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarkupDoc, type Actor } from '@markup/doc';
 import { Canvas } from '../src/canvas/Canvas';
+import { ValueStore } from '../src/canvas/store';
 import { DocProvider } from '../src/store/DocProvider';
 import { knownLocalFonts, listLocalFonts, requestLocalFonts, resetLocalFontsCache } from '../src/fonts/localFonts';
 import { LOCAL_FONTS_NOTE } from '../src/bridge/fontTools';
@@ -107,7 +108,7 @@ describe('local font access', () => {
     doc.insertNodes(actor, rootId, [{ type: 'frame', name: 'A', styles: { fontFamily: 'Inter' } }]);
     render(
       <DocProvider doc={doc} actor={actor}>
-        <Canvas rootId={rootId} viewport={{ x: 0, y: 0, zoom: 1 }} onViewport={() => {}} />
+        <Canvas rootId={rootId} viewport={new ValueStore({ x: 0, y: 0, zoom: 1 })} />
       </DocProvider>,
     );
     await new Promise((r) => setTimeout(r, 20));

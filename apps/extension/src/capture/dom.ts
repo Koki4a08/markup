@@ -1,6 +1,7 @@
 /** Page-walking helpers shared by the simplified (serialize.ts) and exact (exact.ts) serializers. */
 import type { CaptureEnv } from './env';
 import { firstUrl } from './images';
+import { isolateSvgIds } from './svgDefs';
 import { get, hasPadding, isBoxy, num, styleAttr, type Decl } from './styles';
 
 export const SNAPSHOT_MARKER = '<!--markup:snapshot v1-->';
@@ -8,6 +9,10 @@ export const SNAPSHOT_MARKER = '<!--markup:snapshot v1-->';
 export const SNAPSHOT_ATTR = 'data-markup-snapshot';
 /** On an exact snapshot root: the app parses it in the permissive `any` dialect. */
 export const DIALECT_ATTR = 'data-markup-dialect';
+/** On a snapshot root: the page's web fonts the capture uses, as @font-face rules with inlined files. */
+export const FONTS_ATTR = 'data-markup-fonts';
+/** On a snapshot root: the @keyframes its layers' animations use (stored in the file on paste). */
+export const KEYFRAMES_ATTR = 'data-markup-keyframes';
 export const TOO_LARGE = 'This page is too large to snapshot — pick a smaller element.';
 
 /** Caps that keep a full-page capture from exhausting memory or the clipboard. */
@@ -53,16 +58,29 @@ export function visible(cs: CSSStyleDeclaration): boolean {
 /** Left out of every capture: never rendered, or Markup's own overlay. */
 export const skipped = (el: Element) => SKIP.has(el.localName) || el.hasAttribute(SNAPSHOT_ATTR);
 
+type StyleOf = (el: Element) => CSSStyleDeclaration;
+
+const contentHidden = (el: Element, style?: StyleOf) =>
+  el.getAttribute('hidden') === 'until-found' || (!!style && get(style(el), 'content-visibility') === 'hidden');
+
 /**
  * The children the page renders for el (its flat-tree children): an open shadow root's content in place of the
  * light DOM, with each <slot> replaced by the nodes assigned to it, or by its fallback content when none are.
  */
-export function renderedChildren(el: Element): Node[] {
+export function renderedChildren(el: Element, style?: StyleOf): Node[] {
+  // A closed <details> shows only its first <summary>; the rest sits in a content-visibility: hidden slot, so it
+  // keeps its computed display and visibility (and its layout boxes) while the page paints none of it.
+  if (el.localName === 'details' && !(el as HTMLDetailsElement).open) {
+    const summary = Array.from(el.children).find((c) => c.localName === 'summary');
+    return summary ? [summary] : [];
+  }
+  // content-visibility: hidden (also hidden="until-found") skips painting the contents, not the box itself.
+  if (contentHidden(el, style)) return [];
   const out: Node[] = [];
   for (const n of Array.from((el.shadowRoot ?? el).childNodes)) {
     if (isElement(n) && n.localName === 'slot') {
       const assigned = typeof (n as HTMLSlotElement).assignedNodes === 'function' ? (n as HTMLSlotElement).assignedNodes({ flatten: true }) : [];
-      out.push(...(assigned.length ? assigned : renderedChildren(n)));
+      out.push(...(assigned.length ? assigned : renderedChildren(n, style)));
     } else out.push(n);
   }
   return out;
@@ -70,7 +88,8 @@ export function renderedChildren(el: Element): Node[] {
 
 /**
  * A self-contained copy of an inline svg: computed fill/stroke on shapes, currentColor resolved, event handlers,
- * scripts and foreignObject removed, sprite references inlined, and an explicit pixel size. The caller sets style.
+ * scripts and foreignObject removed, sprite references and outside definitions inlined, ids made unique, and an
+ * explicit pixel size. The caller sets style.
  */
 export function cleanSvg(el: SVGSVGElement, env: CaptureEnv, width: number, height: number): SVGSVGElement {
   const clone = el.cloneNode(true) as SVGSVGElement;
@@ -87,11 +106,15 @@ export function cleanSvg(el: SVGSVGElement, env: CaptureEnv, width: number, heig
     if (SHAPES.has(orig.localName)) {
       for (const prop of ['fill', 'stroke']) {
         const v = get(ocs, prop);
-        if (v && !/url\(|currentcolor/i.test(v)) copy.setAttribute(prop, v);
+        // A gradient or pattern fill set by a stylesheet (which does not come along) becomes an attribute.
+        const ref = /^url\(\s*['"]?#([^'")\s]+)/.exec(v)?.[1];
+        if (ref) copy.setAttribute(prop, `url(#${ref})`);
+        else if (v && !/url\(|currentcolor/i.test(v)) copy.setAttribute(prop, v);
       }
     }
   });
   inlineSprites(clone, el);
+  isolateSvgIds(clone, el);
   clone.querySelectorAll('script, foreignObject').forEach((n) => n.remove());
   clone.removeAttribute('class');
   clone.setAttribute('width', String(Math.round(width * 100) / 100));
@@ -102,11 +125,20 @@ export function cleanSvg(el: SVGSVGElement, env: CaptureEnv, width: number, heig
 /** `<use href="#icon">` pointing outside the svg (sprite sheets) is replaced by a copy of what it points at. */
 function inlineSprites(clone: SVGSVGElement, original: SVGSVGElement): void {
   const doc = original.ownerDocument;
+  // How many elements in the clone carry each id, kept up to date as <use>s are replaced, instead of rescanning
+  // the clone for every <use>. Symbol children are copied with their ids, so later <use>s can find them.
+  const ids = new Map<string, number>();
+  const count = (root: Element, by: number) => {
+    for (const n of [root, ...Array.from(root.querySelectorAll('[id]'))]) {
+      if (n.hasAttribute('id')) ids.set(n.id, (ids.get(n.id) ?? 0) + by);
+    }
+  };
+  for (const n of Array.from(clone.querySelectorAll('[id]'))) ids.set(n.id, (ids.get(n.id) ?? 0) + 1);
   for (const use of Array.from(clone.querySelectorAll('use'))) {
     const href = use.getAttribute('href') ?? use.getAttribute('xlink:href') ?? '';
     if (!href.startsWith('#')) continue;
     const id = href.slice(1);
-    if (Array.from(clone.querySelectorAll('[id]')).some((n) => n.id === id)) continue;
+    if ((ids.get(id) ?? 0) > 0) continue;
     const target = doc.getElementById(id);
     if (!target) continue;
     const ns = 'http://www.w3.org/2000/svg';
@@ -128,12 +160,16 @@ function inlineSprites(clone: SVGSVGElement, original: SVGSVGElement): void {
     wrapper.querySelectorAll('*').forEach((n) => {
       for (const a of Array.from(n.attributes)) if (/currentcolor/i.test(a.value) && color) n.setAttribute(a.name, a.value.replace(/currentcolor/gi, color));
     });
+    count(use, -1);
     use.replaceWith(wrapper);
+    count(wrapper, 1);
   }
 }
 
 export interface PseudoInfo {
   which: '::before' | '::after';
+  /** The element the pseudo-element belongs to. */
+  owner: Element;
   cs: CSSStyleDeclaration;
   /** The text of the content property (strings and attr() values). */
   text: string;
@@ -160,7 +196,7 @@ export function readPseudo(env: CaptureEnv, el: Element, which: '::before' | '::
   const sized = num(get(cs, 'width')) > 0 && num(get(cs, 'height')) > 0;
   if (!text.trim() && !image && !(boxy && sized)) return null;
   const inline = !!text.trim() && !image && !absolute && !boxy && get(cs, 'display') === 'inline';
-  return { which, cs, text, image, absolute, boxy, inline };
+  return { which, owner: el, cs, text, image, absolute, boxy, inline };
 }
 
 /** What a form field shows: a check box, or a line (or block) of text, possibly its placeholder. */
@@ -223,4 +259,22 @@ export function snapshotName(meta: { title: string; url: string }): string {
     // Not a URL.
   }
   return meta.title.trim() || host || 'Snapshot';
+}
+
+/** The opening tag of a target written as a frame: `<div`, its attributes (values escaped, so no raw quote), `>`. */
+const OPEN_DIV = /^<div((?: [\w-]+="[^"]*")*)>/;
+
+/**
+ * A lone capture target as the snapshot root itself, so no empty frame wraps it: its opening tag gets `marks`
+ * (the snapshot attributes), `name` unless it has a layer-name of its own, and `decls` ahead of its own styles
+ * (which win); `defs` goes in first. Null when the target is not written as a div.
+ */
+export function targetAsRoot(html: string, marks: string, name: string, decls: Decl[], defs: string): string | null {
+  const open = OPEN_DIV.exec(html);
+  if (!open) return null;
+  let tag = open[1]!;
+  if (!tag.includes(' layer-name="')) tag = ` layer-name="${escAttr(name)}"${tag}`;
+  const extra = escAttr(styleAttr(decls));
+  if (extra) tag = tag.includes(' style="') ? tag.replace(' style="', ` style="${extra};`) : `${tag} style="${extra}"`;
+  return `<div ${marks}${tag}>${defs}${html.slice(open[0].length)}`;
 }

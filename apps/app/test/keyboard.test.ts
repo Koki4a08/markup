@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MarkupDoc, type Actor, ActorUndo } from '@markup/doc';
-import { resolveShortcut, shortcutLabel } from '../src/keyboard';
-import { runCommand, type CommandContext } from '../src/commands';
+import { resolveShortcut, shortcutLabel } from '../src/commands/keyboard';
+import { runCommand, type CommandContext } from '../src/commands/commands';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
 const key = (k: string, mods: Partial<Record<'meta' | 'shift' | 'alt' | 'ctrl', boolean>> = {}, code?: string) => ({

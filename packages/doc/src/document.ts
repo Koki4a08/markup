@@ -147,6 +147,13 @@ export class MarkupDoc {
     return { nodeIds, ignoredStyles: ignored };
   }
 
+  /** HTML written straight onto a page: each top-level element becomes its own artboard, with no wrapper. */
+  writeArtboards(actor: Actor, rootId: string, html: string, summary?: string): { nodeIds: string[]; ignoredStyles: string[] } {
+    const { specs, ignored } = parseHtml(html);
+    const nodeIds = this.mutate(actor, summary ?? `Inserted ${plural(countSpecs(specs), 'node')}`, () => ops.insertArtboards(this, rootId, specs));
+    return { nodeIds, ignoredStyles: ignored };
+  }
+
   /** `dialect: 'any'` (the Inspector's free-form styles) keeps margins, grid and other CSS outside Markup's layout dialect. */
   updateStyles(actor: Actor, updates: StyleUpdate[], summary?: string, opts: { dialect?: Dialect } = {}): { ignoredStyles: Record<string, string[]> } {
     const count = new Set(updates.flatMap((u) => u.nodeIds)).size;

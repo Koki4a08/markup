@@ -1,156 +1,129 @@
-import type { ReactNode } from 'react';
+import {
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
+  Archive,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  Check,
+  ChevronRight,
+  Copy,
+  Crosshair,
+  Download,
+  Ellipsis,
+  Eye,
+  EyeOff,
+  File,
+  FileText,
+  Folder,
+  Frame,
+  Hand,
+  Hexagon,
+  History,
+  Image,
+  LayoutGrid,
+  List,
+  Lock,
+  LockOpen,
+  Maximize2,
+  MessageCircle,
+  Minus,
+  MousePointer2,
+  Palette,
+  Plus,
+  Search,
+  Settings,
+  Sun,
+  Moon,
+  Monitor,
+  Spline,
+  Square,
+  SquareDashed,
+  Trash2,
+  Type,
+  WrapText,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 
-/** One authored icon set: 16px grid, 1.5px stroke, round caps. */
-const Svg = ({ children, label }: { children: ReactNode; label?: string }) => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden={label ? undefined : true} aria-label={label}>
-    {children}
+/** One icon set for the whole UI: Lucide at 16px with a 1.75 stroke (about 1.2px on screen). */
+const i = (Icon: LucideIcon, size = 16) => <Icon size={size} strokeWidth={1.75} aria-hidden focusable={false} />;
+
+export const icons = {
+  move: i(MousePointer2),
+  frame: i(Frame),
+  rect: i(Square),
+  text: i(Type),
+  hand: i(Hand),
+  comment: i(MessageCircle),
+  image: i(Image),
+  svg: i(Spline),
+  eye: i(Eye, 14),
+  eyeOff: i(EyeOff, 14),
+  lock: i(Lock, 14),
+  unlock: i(LockOpen, 14),
+  chevron: i(ChevronRight, 14),
+  page: i(File),
+  close: i(X),
+  plus: i(Plus),
+  minus: i(Minus),
+  download: i(Download),
+  home: i(LayoutGrid),
+  list: i(List),
+  folder: i(Folder),
+  file: i(FileText),
+  archive: i(Archive),
+  search: i(Search, 14),
+  more: i(Ellipsis),
+  trash: i(Trash2, 14),
+  copy: i(Copy, 14),
+  check: i(Check, 14),
+  history: i(History),
+  theme: i(Palette),
+  maximize: i(Maximize2, 14),
+  restore: i(Copy, 13),
+  windowClose: i(X, 15),
+  alignTextLeft: i(AlignLeft, 14),
+  alignTextCenter: i(AlignCenter, 14),
+  alignTextRight: i(AlignRight, 14),
+  alignTextJustify: i(AlignJustify, 14),
+  arrowRight: i(ArrowRight, 14),
+  arrowDown: i(ArrowDown, 14),
+  arrowLeft: i(ArrowLeft, 14),
+  arrowUp: i(ArrowUp, 14),
+  wrap: i(WrapText, 14),
+  corners: i(SquareDashed, 14),
+  settings: i(Settings),
+  sun: i(Sun, 14),
+  moon: i(Moon, 14),
+  monitor: i(Monitor, 14),
+  token: i(Hexagon, 14),
+  target: i(Crosshair, 13),
+};
+
+/** Small glyphs for inspector field prefixes, drawn on a 12px grid to sit inside 28px inputs. */
+const Glyph = ({ d }: { d: string }) => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable={false}>
+    <path d={d} />
   </svg>
 );
 
-export const icons = {
-  move: (
-    <Svg>
-      <path d="M4 2.5 12.5 8 8.6 9.1l2.2 3.9-1.5.8-2.2-3.9L4 12.5Z" />
-    </Svg>
-  ),
-  frame: (
-    <Svg>
-      <path d="M5 1.5v13M11 1.5v13M1.5 5h13M1.5 11h13" />
-    </Svg>
-  ),
-  rect: (
-    <Svg>
-      <rect x="2.5" y="3.5" width="11" height="9" rx="1" />
-    </Svg>
-  ),
-  text: (
-    <Svg>
-      <path d="M3 3.5h10M8 3.5v9.5M6 13h4" />
-    </Svg>
-  ),
-  hand: (
-    <Svg>
-      <path d="M5 8.5V4a1 1 0 0 1 2 0v3.5M7 7V3a1 1 0 0 1 2 0v4M9 7V3.5a1 1 0 0 1 2 0V8M11 6.5a1 1 0 0 1 2 0v3a4.5 4.5 0 0 1-4.5 4.5h-.7a4 4 0 0 1-3.2-1.6L2.8 10a1 1 0 0 1 1.6-1.2L5 9.5" />
-    </Svg>
-  ),
-  image: (
-    <Svg>
-      <rect x="2" y="3" width="12" height="10" rx="1" />
-      <path d="m2.5 11.5 3.5-3.5 3 3 2-2 2.5 2.5" />
-    </Svg>
-  ),
-  svg: (
-    <Svg>
-      <path d="M3 12.5c2-6 8-6 10-9" />
-      <circle cx="3" cy="12.5" r="1" />
-      <circle cx="13" cy="3.5" r="1" />
-    </Svg>
-  ),
-  eye: (
-    <Svg>
-      <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
-      <circle cx="8" cy="8" r="2" />
-    </Svg>
-  ),
-  eyeOff: (
-    <Svg>
-      <path d="M2 2l12 12M6.5 4a6 6 0 0 1 1.5-.5c4 0 6.5 4.5 6.5 4.5a11 11 0 0 1-1.8 2.3M4 5.4A11 11 0 0 0 1.5 8S4 12.5 8 12.5a6 6 0 0 0 2.4-.5" />
-    </Svg>
-  ),
-  lock: (
-    <Svg>
-      <rect x="3.5" y="7" width="9" height="6.5" rx="1" />
-      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-    </Svg>
-  ),
-  unlock: (
-    <Svg>
-      <rect x="3.5" y="7" width="9" height="6.5" rx="1" />
-      <path d="M5.5 7V5a2.5 2.5 0 0 1 4.9-.7" />
-    </Svg>
-  ),
-  chevron: (
-    <Svg>
-      <path d="m6 4 4 4-4 4" />
-    </Svg>
-  ),
-  page: (
-    <Svg>
-      <path d="M4 1.5h5.5L12 4v10.5H4Z" />
-    </Svg>
-  ),
-  close: (
-    <Svg>
-      <path d="m4 4 8 8M12 4l-8 8" />
-    </Svg>
-  ),
-  plus: (
-    <Svg>
-      <path d="M8 3v10M3 8h10" />
-    </Svg>
-  ),
-  download: (
-    <Svg>
-      <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11" />
-    </Svg>
-  ),
-  home: (
-    <Svg>
-      <rect x="2" y="2" width="5" height="5" rx="1" />
-      <rect x="9" y="2" width="5" height="5" rx="1" />
-      <rect x="2" y="9" width="5" height="5" rx="1" />
-      <rect x="9" y="9" width="5" height="5" rx="1" />
-    </Svg>
-  ),
-  folder: (
-    <Svg>
-      <path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3h-4a1 1 0 0 0-1 1.5Z" />
-    </Svg>
-  ),
-  file: (
-    <Svg>
-      <path d="M4 1.5h5.5L12 4v10.5H4Z" />
-      <path d="M9.5 1.5V4H12" />
-    </Svg>
-  ),
-  archive: (
-    <Svg>
-      <rect x="1.5" y="2.5" width="13" height="3" rx="0.5" />
-      <path d="M2.5 5.5v7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-7M6.5 8.5h3" />
-    </Svg>
-  ),
-  search: (
-    <Svg>
-      <circle cx="7" cy="7" r="4.5" />
-      <path d="m10.5 10.5 3.5 3.5" />
-    </Svg>
-  ),
-  more: (
-    <Svg>
-      <circle cx="3.5" cy="8" r="0.75" />
-      <circle cx="8" cy="8" r="0.75" />
-      <circle cx="12.5" cy="8" r="0.75" />
-    </Svg>
-  ),
-  trash: (
-    <Svg>
-      <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.5 7v4M9.5 7v4" />
-    </Svg>
-  ),
-  comment: (
-    <Svg>
-      <path d="M3 3h10a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H7.5L4.5 14v-2.5H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
-    </Svg>
-  ),
-  copy: (
-    <Svg>
-      <rect x="5.5" y="5.5" width="8" height="8" rx="1" />
-      <path d="M10.5 3.5v-.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5" />
-    </Svg>
-  ),
-  check: (
-    <Svg>
-      <path d="m3 8.5 3 3 7-7" />
-    </Svg>
-  ),
+export const glyphs = {
+  gap: <Glyph d="M2 1.5v9M10 1.5v9M5 4h2M5 8h2" />,
+  padTop: <Glyph d="M1.5 1.5h9M2.5 4.5h7v6h-7z" />,
+  padRight: <Glyph d="M10.5 1.5v9M1.5 2.5h6v7h-6z" />,
+  padBottom: <Glyph d="M1.5 10.5h9M2.5 1.5h7v6h-7z" />,
+  padLeft: <Glyph d="M1.5 1.5v9M4.5 2.5h6v7h-6z" />,
+  radius: <Glyph d="M1.5 10.5V5.5a4 4 0 0 1 4-4h5" />,
+  cornerTL: <Glyph d="M2 10V6a4 4 0 0 1 4-4h4" />,
+  cornerTR: <Glyph d="M2 2h4a4 4 0 0 1 4 4v4" />,
+  cornerBR: <Glyph d="M10 2v4a4 4 0 0 1-4 4H2" />,
+  cornerBL: <Glyph d="M10 10H6a4 4 0 0 1-4-4V2" />,
+  lineHeight: <Glyph d="M1.5 1.5h9M1.5 10.5h9M4 8l2-4.5L8 8M4.7 6.5h2.6" />,
+  letterSpacing: <Glyph d="M1.5 1.5v9M10.5 1.5v9M4 8l2-5 2 5M4.6 6.5h2.8" />,
+  fontSize: <Glyph d="M1.5 10.5 4.5 2l3 8.5M2.6 7.5h3.8M8.5 10.5l1.5-4 1.5 4M8.9 9.5h2.2" />,
+  opacity: <Glyph d="M6 1.5a4.5 4.5 0 1 0 0 9zM6 1.5a4.5 4.5 0 0 1 0 9" />,
 };

@@ -1,7 +1,8 @@
 import { act, render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MarkupDoc, type Actor } from '@markup/doc';
 import { NodeView } from '../src/canvas/NodeView';
+import { nodeElementIn } from '../src/canvas/registry';
 import { DocProvider } from '../src/store/DocProvider';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
@@ -72,5 +73,16 @@ describe('NodeView', () => {
       doc.insertNodes(human, artboard, [{ type: 'text', text: 'Hi' }]);
     });
     expect((container.querySelector('p') as HTMLElement).style.margin).toBe('0px');
+  });
+
+  it('registers its element for O(1) lookup, and drops it on unmount', () => {
+    const { container, artboard, unmount } = setup();
+    const el = container.querySelector(`[data-node-id="${artboard}"]`) as HTMLElement;
+    const spy = vi.spyOn(container, 'querySelector');
+    expect(nodeElementIn(container, artboard)).toBe(el);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    unmount();
+    expect(nodeElementIn(container, artboard)).toBeNull();
   });
 });

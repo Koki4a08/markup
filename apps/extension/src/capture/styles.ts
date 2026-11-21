@@ -7,7 +7,8 @@ const CORNERS = ['top-left', 'top-right', 'bottom-right', 'bottom-left'] as cons
 const GENERIC_FAMILIES = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math', 'fangsong']);
 /** Values the paste side would drop, or that could smuggle in CSS escapes. */
 const UNSAFE_VALUE = /\\|javascript:|vbscript:|expression\(|-moz-binding|behavior\s*:|@import|image-set\(|[<>{}]/i;
-const SAFE_URL = /^(https?:|data:image\/(png|jpe?g|gif|webp|avif)[;,])/i;
+/** Inline images, and references to an SVG definition the capture carries along (svgDefs.ts). */
+const SAFE_URL = /^(https?:|data:image\/(png|jpe?g|gif|webp|avif)[;,]|#[A-Za-z_][\w-]*$)/i;
 
 export const get = (cs: CSSStyleDeclaration, prop: string): string => (cs.getPropertyValue(prop) || '').trim();
 export const num = (v: string): number => {
@@ -59,6 +60,17 @@ export function isBoxy(cs: CSSStyleDeclaration): boolean {
 
 export const clips = (cs: CSSStyleDeclaration): boolean =>
   ['overflow-x', 'overflow-y'].some((p) => /^(hidden|clip|auto|scroll)$/.test(get(cs, p)));
+
+/**
+ * Nothing of the box shows: an empty box that clips, or a screen-reader-only label (the sr-only pattern: at most
+ * 1px, clipping, and cut away by clip or clip-path).
+ */
+export function clippedAway(cs: CSSStyleDeclaration, width: number, height: number): boolean {
+  if (!clips(cs)) return false;
+  if (width <= 0 || height <= 0) return true;
+  const clip = get(cs, 'clip');
+  return width <= 1 && height <= 1 && ((!!clip && clip !== 'auto') || !/^(none)?$/.test(get(cs, 'clip-path')));
+}
 
 /** Rotation in degrees from the computed transform matrix; scale and skew are not carried over. */
 export function rotation(cs: CSSStyleDeclaration): number {
@@ -148,6 +160,14 @@ export function textDecls(cs: CSSStyleDeclaration): Decl[] {
   add('white-space', get(cs, 'white-space'), ['normal']);
   add('font-feature-settings', get(cs, 'font-feature-settings'), ['normal']);
   add('font-variation-settings', get(cs, 'font-variation-settings'), ['normal']);
+  add('text-shadow', get(cs, 'text-shadow'), ['none']);
+  // Gradient text paints a transparent fill over its background; outlined text draws a stroke.
+  const fill = get(cs, '-webkit-text-fill-color');
+  if (fill && fill !== get(cs, 'color')) add('-webkit-text-fill-color', fill);
+  if (num(get(cs, '-webkit-text-stroke-width')) > 0) {
+    add('-webkit-text-stroke-width', get(cs, '-webkit-text-stroke-width'));
+    add('-webkit-text-stroke-color', get(cs, '-webkit-text-stroke-color'));
+  }
   return out;
 }
 
@@ -187,14 +207,17 @@ export function flexDecls(cs: CSSStyleDeclaration): Decl[] {
 export const paddingDecls = (cs: CSSStyleDeclaration): Decl[] =>
   SIDES.filter((s) => num(get(cs, `padding-${s}`)) > 0).map((s) => [`padding-${s}`, get(cs, `padding-${s}`)] as Decl);
 
+/** Whether the paste side keeps a declaration with this value (no CSS escapes, script, or non-image URLs). */
+export function safeValue(v: string): boolean {
+  if (!v || UNSAFE_VALUE.test(v)) return false;
+  for (const m of v.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/gi)) if (!SAFE_URL.test(m[2]!)) return false;
+  return true;
+}
+
 /** A style attribute value; declarations the paste sanitiser would reject are dropped here already. */
 export function styleAttr(decls: Decl[]): string {
   return decls
-    .filter(([, v]) => {
-      if (!v || UNSAFE_VALUE.test(v)) return false;
-      for (const m of v.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/gi)) if (!SAFE_URL.test(m[2]!)) return false;
-      return true;
-    })
+    .filter(([, v]) => safeValue(v))
     .map(([k, v]) => `${k}:${v}`)
     .join(';');
 }

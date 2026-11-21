@@ -1,4 +1,6 @@
-import { MarkupError, runDocTool, type Actor, type LibraryItem } from '@markup/doc';
+import { MarkupError, type Actor, type LibraryItem } from '@markup/doc';
+// Through its own entry: runDocTool pulls in the protocol's zod schemas, which only the lazily loaded bridge needs.
+import { runDocTool } from '@markup/doc/tools';
 import { parseMarkupLink, tools, type ResourceToolName, type ToolParams } from '@markup/protocol';
 import { fileUrl, type Workspace } from '../workspace/Workspace';
 
