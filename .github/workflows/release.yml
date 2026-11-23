@@ -102,9 +102,60 @@ jobs:
           releaseDraft: true
           prerelease: false
 
+  extension:
+    name: Browser extension
+    needs: desktop
+    runs-on: ubuntu-latest
+    # Job-level so the signing step's `if` can see whether the secrets exist.
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Each release ships the extension with the release's version, so Firefox
+      # signing (which never accepts a version twice) always gets a new one.
+      - name: Build for Chromium and Firefox
+        working-directory: apps/extension
+        run: EXTENSION_VERSION="${TAG#v}" pnpm build
+
+      - name: Package for Chrome, Edge, Brave and Opera
+        working-directory: apps/extension/dist
+        run: zip -qr ../Markup-Snapshot-Chrome.zip .
+
+      - name: Lint for Firefox
+        working-directory: apps/extension
+        run: npx -y web-ext@8 lint --source-dir dist-firefox --self-hosted
+
+      # Free signing by Mozilla as an unlisted add-on, so Firefox installs the
+      # .xpi straight from the website. Skipped until the AMO API key exists.
+      - name: Sign for Firefox
+        if: ${{ env.AMO_JWT_ISSUER != '' }}
+        working-directory: apps/extension
+        run: |
+          npx -y web-ext@8 sign --channel unlisted --source-dir dist-firefox --artifacts-dir signed \
+            --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+          mv signed/*.xpi Markup-Snapshot-Firefox.xpi
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: apps/extension
+        run: |
+          gh release upload "$TAG" Markup-Snapshot-Chrome.zip --clobber
+          if [ -f Markup-Snapshot-Firefox.xpi ]; then
+            gh release upload "$TAG" Markup-Snapshot-Firefox.xpi --clobber
+          fi
+
   setup:
     name: Markup Setup (Windows)
-    needs: desktop
+    needs: [desktop, extension]
     runs-on: windows-latest
     steps:
       # Setup always fetches the newest release at run time, so it is built from
