@@ -130,16 +130,7 @@ export class Workspace {
     if (!tab) return;
     // First, so a library update fired from in here (touch) cannot close the tab twice.
     this.openTabs.delete(fileId);
-    const capture = fileId === this.active ? this.opts.captureThumbnail?.(fileId) : undefined;
-    if (capture) {
-      void capture
-        .then((thumbnail) => {
-          if (thumbnail && this.library.get(fileId)) this.library.touch(fileId, { thumbnail });
-        })
-        .catch(() => {
-          // A missing thumbnail only leaves the dashboard card blank.
-        });
-    }
+    this.refreshThumbnail(fileId);
     tab.unsubscribe();
     disposeState(tab);
     if (tab.touchTimer) {
@@ -156,8 +147,26 @@ export class Workspace {
   activate(fileId: string): void {
     if (!this.openTabs.has(fileId)) throw new MarkupError('INVALID_ARGUMENT', `File ${fileId} is not open.`);
     if (this.active === fileId) return;
+    // The tab going to the background is still on screen: its card on the dashboard catches up now.
+    if (this.active) this.refreshThumbnail(this.active);
     this.active = fileId;
     this.emit();
+  }
+
+  /**
+   * Captures the file's dashboard image from its editor, when that editor is the one on screen. The
+   * image is taken at once, so the editor may close or go to the background right after.
+   */
+  refreshThumbnail(fileId: string): void {
+    const capture = fileId === this.active ? this.opts.captureThumbnail?.(fileId) : undefined;
+    if (!capture) return;
+    void capture
+      .then((thumbnail) => {
+        if (thumbnail && this.library.get(fileId)) this.library.setThumbnail(fileId, thumbnail);
+      })
+      .catch(() => {
+        // A missing thumbnail only leaves the dashboard card blank.
+      });
   }
 
   doc(fileId: string): MarkupDoc | undefined {

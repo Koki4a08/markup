@@ -65,7 +65,7 @@ const HistoryRow = memo(function HistoryRow({ seq, at, actorName, agent, summary
     <li className={`history-row ${reverted ? 'is-reverted' : ''} ${agent ? 'is-agent' : ''}`}>
       <div className="history-meta">
         <span className="history-seq">No. {pad(seq)}</span>
-        <span>{time(at)}</span>
+        <span className="history-time">{time(at)}</span>
         <span className="history-actor">{actorName}</span>
       </div>
       <div className="history-summary">{summary}</div>

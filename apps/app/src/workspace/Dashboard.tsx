@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { LibraryItem } from '@markup/doc';
 import { icons } from '../panels/icons';
 import { useLibraryItems, useWorkspace } from './WorkspaceProvider';
 import { isFreshFocus, keepEditingAcrossWindowBlur } from '../ui/windowFocus';
 import { useDismiss } from '../ui/useDismiss';
+import { SegmentThumb } from '../ui/SegmentThumb';
 
 type View = { kind: 'folder'; id: string | null } | { kind: 'archive' };
 
@@ -156,6 +157,7 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
             <input type="search" placeholder="Search all folders" value={query} onChange={(e) => setQuery(e.target.value)} />
           </label>
           <div className="segmented is-icons" role="radiogroup" aria-label="View as">
+            <SegmentThumb />
             {(['grid', 'list'] as const).map((l) => (
               <button key={l} role="radio" aria-checked={layout === l} aria-label={l === 'grid' ? 'Grid' : 'List'} data-tip={l === 'grid' ? 'Grid' : 'List'} className={`segment is-icon ${layout === l ? 'is-active' : ''}`} onClick={() => setLayout(l)}>
                 {l === 'grid' ? icons.home : icons.list}
@@ -193,8 +195,8 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
           )
         ) : (
           <ul className={layout === 'list' ? 'file-list' : 'file-grid'}>
-            {shown.map((item) => (
-              <li key={item.id}>
+            {shown.map((item, i) => (
+              <li key={item.id} style={{ '--i': Math.min(i, 12) } as CSSProperties}>
                 <Card
                   item={item}
                   location={q ? locationOf(item, byId) : null}

@@ -276,8 +276,7 @@ export const Inspector = memo(function Inspector() {
       </Section>
 
       {allText && (
-        <Section title="Text">
-          <LocalFontsButton />
+        <Section title="Text" actions={<LocalFontsButton />}>
           <TextField label="Font" span={2} value={value('fontFamily')} placeholder="Inherited" onCommit={(v) => setText({ fontFamily: v || null })} />
           <SelectField label="Weight" hideLabel value={value('fontWeight') === MIXED ? MIXED : weightValue(value('fontWeight') as StyleValue | undefined)} options={WEIGHTS} onChange={(v) => setText({ fontWeight: Number(v) })} />
           <TextField label="Size" unit="px" prefix={glyphs.fontSize} value={value('fontSize')} placeholder="12" onCommit={(v) => setText({ fontSize: v || null })} />
@@ -420,7 +419,7 @@ function LocalFontsButton() {
   return (
     <button
       type="button"
-      className="field-input"
+      className="text-button section-text-action"
       onClick={() => void requestLocalFonts().then((ok) => setState(ok ? 'granted' : 'unavailable'))}
       data-tip={state === 'unavailable' ? 'Local fonts are not available or access was denied' : 'Let Markup see the fonts installed on this computer'}
     >

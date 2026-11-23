@@ -44,3 +44,19 @@ export function fitRect(rect: { x: number; y: number; width: number; height: num
   const zoom = clampZoom(Math.min((screen.width - padding * 2) / Math.max(rect.width, 1), (screen.height - padding * 2) / Math.max(rect.height, 1)));
   return { zoom, x: (screen.width - rect.width * zoom) / 2 - rect.x * zoom, y: (screen.height - rect.height * zoom) / 2 - rect.y * zoom };
 }
+
+/**
+ * The view part-way (t from 0 to 1) between two views, as seen through the screen point `mid`: zoom
+ * changes by equal ratios and the world point under `mid` travels in a straight line, so a glide feels
+ * even at any zoom.
+ */
+export function blendViewport(from: Viewport, to: Viewport, t: number, mid: Point): Viewport {
+  if (t <= 0) return from;
+  if (t >= 1) return to;
+  const a = screenToWorld(from, mid);
+  const b = screenToWorld(to, mid);
+  const zoom = from.zoom * Math.pow(to.zoom / from.zoom, t);
+  const cx = a.x + (b.x - a.x) * t;
+  const cy = a.y + (b.y - a.y) * t;
+  return { zoom, x: mid.x - cx * zoom, y: mid.y - cy * zoom };
+}
