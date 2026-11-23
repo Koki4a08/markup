@@ -1,0 +1,31 @@
+[package]
+name = "markup-installer"
+version = "0.1.0"
+description = "Markup Setup: downloads and installs the latest Markup desktop app"
+authors = ["Markup contributors"]
+edition = "2024"
+rust-version = "1.90"
+
+[lib]
+name = "installer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.5", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.6", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+futures-util = "0.3"
+sha2 = "0.10"
+tokio = { version = "1", features = ["fs", "io-util", "process"] }
+
+# A small, single-file setup program.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

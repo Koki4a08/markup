@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Markup Setup</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <div class="window">
+      <header class="titlebar" data-tauri-drag-region>
+        <span class="titlebar__name" data-tauri-drag-region>Markup Setup</span>
+        <div class="titlebar__controls">
+          <button class="control" type="button" data-action="minimize" aria-label="Minimize">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7" /></svg>
+          </button>
+          <button class="control control--close" type="button" data-action="close" aria-label="Close">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="stage" data-state="checking">
+        <!-- The brand mark sits in an editor-style selection, drawn on start. -->
+        <div class="mark" aria-hidden="true">
+          <img src="./src/icon.svg" width="64" height="64" alt="" />
+          <span class="mark__frame"></span>
+          <span class="mark__handle mark__handle--tl"></span>
+          <span class="mark__handle mark__handle--tr"></span>
+          <span class="mark__handle mark__handle--bl"></span>
+          <span class="mark__handle mark__handle--br"></span>
+        </div>
+
+        <h1 class="title" data-title>Finding the latest version</h1>
+        <p class="detail" data-detail>Checking GitHub for the newest Markup release.</p>
+
+        <div class="progress" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" data-progress>
+          <span class="progress__fill" data-fill></span>
+        </div>
+        <div class="meta">
+          <span data-amount></span>
+          <span data-speed></span>
+        </div>
+
+        <div class="actions">
+          <button class="button button--secondary" type="button" data-action="manual">Download manually</button>
+          <button class="button" type="button" data-action="primary">Try again</button>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

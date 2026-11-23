@@ -1,0 +1,117 @@
+# Builds the Markup desktop app for every platform and attaches the installers
+# to a GitHub release, plus the small "Markup Setup" bootstrapper for Windows.
+#
+# - Push a tag like v0.2.0 to build and publish that release.
+# - Or run it by hand (Actions > Release > Run workflow) with an existing tag to
+#   add or rebuild the installers of that release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload to (for example v0.1.0)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+          - name: macOS Apple silicon
+            os: macos-latest
+          - name: macOS Intel
+            os: macos-13
+          - name: Linux x64
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/app/src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # The `markup` CLI ships inside the app as a sidecar, compiled for this runner.
+      - run: pnpm --filter @markup/mcp compile
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/app
+          tauriScript: pnpm exec tauri
+          tagName: ${{ env.TAG }}
+          releaseName: Markup ${{ env.TAG }}
+          releaseBody: Download Markup for your platform below. On Windows, Markup-Setup.exe installs the latest version for you.
+          releaseDraft: false
+          prerelease: false
+
+  setup:
+    name: Markup Setup (Windows)
+    needs: desktop
+    runs-on: windows-latest
+    steps:
+      # Setup always fetches the newest release at run time, so it is built from
+      # the branch that runs the workflow, not from the release tag.
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/installer/src-tauri
+
+      - run: pnpm install --frozen-lockfile
+      # tauri::generate_context! embeds the built UI, so it must exist before cargo test.
+      - name: Build the setup UI
+        working-directory: apps/installer
+        run: pnpm build
+      - name: Unit tests
+        working-directory: apps/installer/src-tauri
+        run: cargo test
+      - name: Build Markup-Setup.exe
+        working-directory: apps/installer
+        run: pnpm exec tauri build --no-bundle
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release upload "$TAG" apps/installer/src-tauri/target/release/Markup-Setup.exe --clobber
