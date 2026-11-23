@@ -46,6 +46,21 @@ describe('hitTest', () => {
     doc.setFlags(human, [card], { locked: false, hidden: true });
     expect(hitTest(doc, rootId, { x: 35, y: 35 }, { deep: true, rectOf })).toBe(artboard);
   });
+
+  it('clicks pass through layers that paint nothing (a snapshot hover overlay over the whole element)', () => {
+    const { doc, rootId, artboard, card, title, rectOf } = setup();
+    const [overlay] = doc.insertNodes(human, artboard, [{ type: 'frame', name: 'Overlay', styles: { opacity: 0 } }]);
+    const full = (id: string) => (id === overlay ? { x: 0, y: 0, width: 400, height: 300 } : rectOf(id));
+    expect(hitTest(doc, rootId, { x: 35, y: 35 }, { deep: false, rectOf: full })).toBe(card);
+    expect(hitPath(doc, rootId, { x: 35, y: 35 }, full)).toEqual([artboard, card, title]);
+    const invisible: Record<string, string | number>[] = [{ opacity: 1, visibility: 'hidden' }, { visibility: 'visible', display: 'none' }];
+    for (const styles of invisible) {
+      doc.updateStyles(human, [{ nodeIds: [overlay!], styles }], undefined, { dialect: 'any' });
+      expect(hitTest(doc, rootId, { x: 35, y: 35 }, { deep: false, rectOf: full })).toBe(card);
+    }
+    doc.updateStyles(human, [{ nodeIds: [overlay!], styles: { display: 'block' } }], undefined, { dialect: 'any' });
+    expect(hitTest(doc, rootId, { x: 35, y: 35 }, { deep: false, rectOf: full })).toBe(overlay);
+  });
 });
 
 describe('freeformMove', () => {

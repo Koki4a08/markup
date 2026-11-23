@@ -5,6 +5,8 @@ import { useLibraryItems, useWorkspace } from './WorkspaceProvider';
 import { isFreshFocus, keepEditingAcrossWindowBlur } from '../ui/windowFocus';
 import { useDismiss } from '../ui/useDismiss';
 import { SegmentThumb } from '../ui/SegmentThumb';
+import { copyText } from '../export/clipboard';
+import { fileUrl } from './Workspace';
 
 type View = { kind: 'folder'; id: string | null } | { kind: 'archive' };
 
@@ -29,6 +31,12 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState('');
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
   // The file being read from storage: its card shimmers so a big file never looks like a dead click.
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [layout, setLayout] = useLayoutPreference();
@@ -227,6 +235,13 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
             setMenu(null);
             setRenamingId(menu.item.id);
           }}
+          onCopyLink={() => {
+            setMenu(null);
+            void run(async () => {
+              await copyText(fileUrl(menu.item.id));
+              setToast('Link copied');
+            });
+          }}
           onMoving={() => setMenu({ ...menu, moving: true })}
           onMove={(folderId) => {
             setMenu(null);
@@ -237,6 +252,11 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
             void run(() => (menu.item.archived ? library.unarchive([menu.item.id]) : library.archive([menu.item.id])));
           }}
         />
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
       )}
     </div>
   );
@@ -400,6 +420,7 @@ function ContextMenu({
   onClose,
   onOpen,
   onRename,
+  onCopyLink,
   onMoving,
   onMove,
   onArchive,
@@ -409,6 +430,7 @@ function ContextMenu({
   onClose(): void;
   onOpen(): void;
   onRename(): void;
+  onCopyLink(): void;
   onMoving(): void;
   onMove(folderId: string): void;
   onArchive(): void;
@@ -476,6 +498,11 @@ function ContextMenu({
           <button role="menuitem" className="row" onClick={onRename}>
             Rename
           </button>
+          {item.type === 'file' && (
+            <button role="menuitem" className="row" onClick={onCopyLink}>
+              Copy link
+            </button>
+          )}
           {!item.archived && (
             <button role="menuitem" className="row" onClick={onMoving}>
               Move to…

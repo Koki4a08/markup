@@ -7,6 +7,8 @@ import { useNode, usePages } from '../store/hooks';
 import { useSelection } from '../canvas/selection';
 import { isFreshFocus, keepEditingAcrossWindowBlur } from '../ui/windowFocus';
 import { useDismiss } from '../ui/useDismiss';
+import { pageLink } from '@markup/protocol/links';
+import { copyText } from '../export/clipboard';
 
 interface Props {
   activePageId: string;
@@ -18,6 +20,8 @@ interface Props {
   onContextMenu?(at: { x: number; y: number }): void;
   /** Drag handle on the panel's inner edge. */
   resizer?: ReactNode;
+  /** Short status message (Link copied, or why a copy failed). */
+  onNotify?(message: string): void;
 }
 
 type DropZone = 'before' | 'after' | 'inside';
@@ -42,7 +46,7 @@ interface Tree {
   contextMenu(at: { x: number; y: number }): void;
 }
 
-export const LayersPanel = memo(function LayersPanel({ activePageId, onPage, renamingId, onRenameDone, collapseSignal, onContextMenu, resizer }: Props) {
+export const LayersPanel = memo(function LayersPanel({ activePageId, onPage, renamingId, onRenameDone, collapseSignal, onContextMenu, resizer, onNotify }: Props) {
   const { doc, actor } = useDoc();
   const selection = useSelection();
   const pages = usePages();
@@ -155,6 +159,13 @@ export const LayersPanel = memo(function LayersPanel({ activePageId, onPage, ren
             onRename={() => {
               setPageMenu(null);
               setRenamingPageId(pageMenu.id);
+            }}
+            onCopyLink={() => {
+              setPageMenu(null);
+              copyText(pageLink(doc.fileId, pageMenu.id)).then(
+                () => onNotify?.('Link copied'),
+                (err: unknown) => onNotify?.(err instanceof Error ? err.message : 'Could not copy the link'),
+              );
             }}
             onDelete={() => {
               setPageMenu(null);
@@ -272,7 +283,7 @@ function PageRow({ id, name, active, canDelete, renaming, onSelect, onRename, on
   );
 }
 
-function PageMenu({ x, y, canDelete, onClose, onRename, onDelete }: { x: number; y: number; canDelete: boolean; onClose(): void; onRename(): void; onDelete(): void }) {
+function PageMenu({ x, y, canDelete, onClose, onRename, onCopyLink, onDelete }: { x: number; y: number; canDelete: boolean; onClose(): void; onRename(): void; onCopyLink(): void; onDelete(): void }) {
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(onClose, { ref });
   useEffect(() => {
@@ -304,9 +315,12 @@ function PageMenu({ x, y, canDelete, onClose, onRename, onDelete }: { x: number;
   }, [onClose]);
 
   return (
-    <div ref={ref} className="context-menu" role="menu" aria-label="Page actions" style={{ left: Math.min(x, window.innerWidth - 220), top: Math.min(y, window.innerHeight - 100) }}>
+    <div ref={ref} className="context-menu" role="menu" aria-label="Page actions" style={{ left: Math.min(x, window.innerWidth - 220), top: Math.min(y, window.innerHeight - 130) }}>
       <button role="menuitem" className="row" onClick={onRename}>
         Rename
+      </button>
+      <button role="menuitem" className="row" onClick={onCopyLink}>
+        Copy link
       </button>
       <button role="menuitem" className="row" disabled={!canDelete} onClick={onDelete}>
         Delete

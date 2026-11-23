@@ -8,6 +8,7 @@ import {
   BezierCurveIcon,
   CaretRightIcon,
   ChatCircleIcon,
+  CircleNotchIcon,
   CheckIcon,
   ClockCounterClockwiseIcon,
   CopyIcon,
@@ -37,6 +38,7 @@ import {
   PlusIcon,
   SelectionIcon,
   SquareIcon,
+  SparkleIcon,
   SquaresFourIcon,
   SunIcon,
   TextAlignCenterIcon,
@@ -45,6 +47,7 @@ import {
   TextAlignRightIcon,
   TextTIcon,
   TrashIcon,
+  WarningCircleIcon,
   XIcon,
   type Icon,
   type IconWeight,
@@ -107,6 +110,12 @@ export const icons = {
   monitor: i(MonitorIcon, 'fill', 14),
   token: i(HexagonIcon, 'fill', 14),
   target: i(CrosshairIcon, 'bold', 13),
+  update: i(DownloadSimpleIcon, 'bold'),
+  updating: i(CircleNotchIcon, 'bold'),
+  updated: i(CheckIcon, 'bold'),
+  alert: i(WarningCircleIcon, 'fill'),
+  dismiss: i(XIcon, 'bold', 14),
+  whatsNew: i(SparkleIcon, 'fill'),
 };
 
 /** Small glyphs for inspector field prefixes, drawn on a 12px grid to sit inside 28px inputs. */

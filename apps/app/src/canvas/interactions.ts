@@ -15,6 +15,28 @@ export function nodeFlags(doc: MarkupDoc, id: string): { type: MarkupNode['type'
   return { type: node.get('type') as MarkupNode['type'], hidden: Boolean(node.get('hidden')), locked: Boolean(node.get('locked')) };
 }
 
+/**
+ * Whether the node itself paints nothing: opacity 0, visibility hidden or display none. Page snapshots are full
+ * of these (hover and focus overlays from ::before/::after that cover the whole element), and a click must
+ * land on what the user sees, never on a transparent layer stacked over it.
+ */
+export function paintsNothing(doc: MarkupDoc, id: string): boolean {
+  const styles = (doc.nodes.get(id) as Y.Map<unknown> | undefined)?.get('styles') as Y.Map<unknown> | undefined;
+  if (!styles) return false;
+  const opacity = styles.get('opacity');
+  return (
+    (opacity !== undefined && opacity !== null && opacity !== '' && Number(opacity) === 0) ||
+    /^(hidden|collapse)$/.test(String(styles.get('visibility') ?? '')) ||
+    String(styles.get('display') ?? '') === 'none'
+  );
+}
+
+/** A canvas click or drop can land on the node: shown, unlocked, and painting something. */
+export function pickable(doc: MarkupDoc, id: string): boolean {
+  const n = nodeFlags(doc, id);
+  return !!n && !n.hidden && !n.locked && !paintsNothing(doc, id);
+}
+
 /** Child ids of a node, read from its Y.Map; empty when the node is gone. */
 export function childIds(doc: MarkupDoc, id: string): string[] {
   const children = (doc.nodes.get(id) as Y.Map<unknown> | undefined)?.get('children') as Y.Array<string> | undefined;
@@ -29,10 +51,7 @@ export interface HitOptions {
 
 /** Top-most visible, unlocked node under a world point. Later siblings paint on top. */
 export function hitTest(doc: MarkupDoc, rootId: string, point: Point, opts: HitOptions): string | null {
-  const selectable = (id: string) => {
-    const n = nodeFlags(doc, id);
-    return !!n && !n.hidden && !n.locked;
-  };
+  const selectable = (id: string) => pickable(doc, id);
 
   const topmostChild = (parentId: string): string | null => {
     if (!doc.nodes.has(parentId)) doc.requireNode(parentId);
@@ -71,8 +90,7 @@ export function hitPath(doc: MarkupDoc, rootId: string, point: Point, rectOf: (i
     let next: string | null = null;
     for (let i = children.length - 1; i >= 0; i--) {
       const id = children[i]!;
-      const n = nodeFlags(doc, id);
-      if (!n || n.hidden || n.locked) continue;
+      if (!pickable(doc, id)) continue;
       const r = rectOf(id);
       if (r && contains(r, point)) {
         next = id;
@@ -222,9 +240,7 @@ export function flowDropTarget(
     const children = childIds(doc, parentId);
     for (let i = children.length - 1; i >= 0; i--) {
       const id = children[i]!;
-      if (skip.has(id)) continue;
-      const n = nodeFlags(doc, id);
-      if (!n || n.hidden || n.locked) continue;
+      if (skip.has(id) || !pickable(doc, id)) continue;
       const r = rectOf(id);
       if (r && contains(r, point)) return id;
     }

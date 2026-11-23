@@ -82,10 +82,15 @@ jobs:
           mkdir -p ../../apps/app/src-tauri/binaries
           bun build src/cli.ts --compile --target=${{ matrix.bun-target }} --outfile ../../apps/app/src-tauri/binaries/markup-${{ matrix.target }}
 
+      # Signs the update bundles and uploads latest.json, the feed the app's updater polls
+      # (plugins.updater in tauri.conf.json). The public half of the key lives in that config.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          includeUpdaterJson: true
           projectPath: apps/app
           tauriScript: pnpm exec tauri
           args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
