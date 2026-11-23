@@ -36,6 +36,32 @@ describe('update_pages', () => {
   });
 });
 
+describe('deletePage', () => {
+  it('removes the page, its nodes and its comment threads', () => {
+    const { doc, a, b, c } = setup();
+    const rootB = doc.rootOf(b);
+    const [frame] = doc.insertNodes(agent, rootB, [{ type: 'frame', name: 'F', children: [{ type: 'text', name: 'T', text: 'hi' }] }]);
+    doc.createThread(agent, { pageId: b, nodeId: null, x: 0, y: 0, body: 'note' });
+    doc.createThread(agent, { pageId: a, nodeId: null, x: 0, y: 0, body: 'keep' });
+    const before = doc.nodeCount();
+    doc.deletePage(agent, b);
+    expect(ids(doc)).toEqual([a, c]);
+    expect(doc.getNode(rootB)).toBeUndefined();
+    expect(doc.getNode(frame!)).toBeUndefined();
+    expect(doc.nodeCount()).toBe(before - 3);
+    expect(doc.threads().map((t) => t.pageId)).toEqual([a]);
+    expect(doc.log().at(-1)!.summary).toBe('Deleted 1 page');
+  });
+
+  it('refuses the last page and unknown pages', () => {
+    const doc = new MarkupDoc();
+    const only = doc.pages()[0]!.id;
+    expect(() => doc.deletePage(agent, only)).toThrow(expect.objectContaining({ code: 'UNSUPPORTED' }));
+    expect(() => doc.deletePage(agent, 'nope')).toThrow(expect.objectContaining({ code: 'PAGE_NOT_FOUND' }));
+    expect(doc.pages()).toHaveLength(1);
+  });
+});
+
 describe('arrange_pages', () => {
   it('reorders and adds a divider', () => {
     const { doc, a, b, c } = setup();

@@ -8,7 +8,7 @@
 
 **Tech Stack:** pnpm workspaces, TypeScript (strict), Vitest, Yjs, y-indexeddb, parse5, zod, ws, @modelcontextprotocol/sdk, React + Vite, html-to-image, Tauri 2.
 
-**Spec:** `PRODUCT.md` (product truth and decisions) and the feature list artifact https://claude.ai/artifact/SNqrCKg8QidtJfggPxJWPy — sections 2, 8, 9, 18, 19, 22 govern this plan.
+**Spec:** `PRODUCT.md` (product truth and decisions) and the feature list artifact https://claude.ai/artifact/SNqrCKg8QidtJfggPxJWPy - sections 2, 8, 9, 18, 19, 22 govern this plan.
 
 ## Global Constraints
 
@@ -18,16 +18,16 @@
 - Bridge hub listens on `127.0.0.1:29980` only (never `0.0.0.0`).
 - No MCP call limits or metering anywhere.
 - Every document mutation runs in `ydoc.transact(fn, actor)` with an `Actor` origin, so history and undo can attribute it.
-- UI is deliberately neutral (system font, greys, one focus blue `#2563eb`) — the visual world is undecided; no branding work in this plan.
+- UI is deliberately neutral (system font, greys, one focus blue `#2563eb`) - the visual world is undecided; no branding work in this plan.
 - Work on branch `feat/foundation`, never on `master`.
 
 ## Review Focus
 
-1. **Agent and human edit the same node at once** — both edits land, and the human's ⌘Z reverts only the human's change (Task 6 test `undo reverts only own actor`).
-2. **write_html with CSS outside the dialect** (`margin`, `display:grid`, `display:inline`, `<table>`) — content still imports, banned properties are dropped and listed in `ignoredStyles`, `var(--token)` values survive (Task 3 tests).
-3. **Editor not running, or it closes mid-call** — the tool returns error code `NO_EDITOR` / `EDITOR_DISCONNECTED` with a sentence telling the user to open Markup, never hangs past 30 s (Task 8 tests).
-4. **Non-Latin text** (Cyrillic, CJK, emoji) — survives write_html → get_jsx byte-for-byte (Task 4 test `round-trips non-latin text`).
-5. **Port 29980 held by a non-Markup process** — `markup mcp` exits with a clear message naming the port instead of crashing on the handshake (Task 8 test `foreign port owner`).
+1. **Agent and human edit the same node at once** - both edits land, and the human's ⌘Z reverts only the human's change (Task 6 test `undo reverts only own actor`).
+2. **write_html with CSS outside the dialect** (`margin`, `display:grid`, `display:inline`, `<table>`) - content still imports, banned properties are dropped and listed in `ignoredStyles`, `var(--token)` values survive (Task 3 tests).
+3. **Editor not running, or it closes mid-call** - the tool returns error code `NO_EDITOR` / `EDITOR_DISCONNECTED` with a sentence telling the user to open Markup, never hangs past 30 s (Task 8 tests).
+4. **Non-Latin text** (Cyrillic, CJK, emoji) - survives write_html → get_jsx byte-for-byte (Task 4 test `round-trips non-latin text`).
+5. **Port 29980 held by a non-Markup process** - `markup mcp` exits with a clear message naming the port instead of crashing on the handshake (Task 8 test `foreign port owner`).
 
 ---
 
@@ -94,9 +94,9 @@ apps/app/
   - `createPage adds after existing and returns id` → name defaults to `"Page 2"`, icon `null`
   - `two docs sharing updates converge` → apply `Y.encodeStateAsUpdate(a.ydoc)` to `b.ydoc`, `b.pages()` deep-equals `a.pages()`
   - `requireNode throws NODE_NOT_FOUND` → `expect(() => doc.requireNode('nope')).toThrow(expect.objectContaining({ code: 'NODE_NOT_FOUND' }))`
-- [ ] **Step 2: Run** `pnpm --filter @markup/doc test` — expected FAIL (module missing).
+- [ ] **Step 2: Run** `pnpm --filter @markup/doc test` - expected FAIL (module missing).
 - [ ] **Step 3: Implement** workspace files, `schema.ts`, `document.ts` (constructor seeds meta + first page only when the ydoc is empty, so loading an existing ydoc does not add a page).
-- [ ] **Step 4: Run** `pnpm test` from root — expected PASS.
+- [ ] **Step 4: Run** `pnpm test` from root - expected PASS.
 - [ ] **Step 5: Commit** `git checkout -b feat/foundation` (first task only), then `git add -A && git commit -m "feat(doc): workspace and document skeleton"`.
 
 ---
@@ -110,15 +110,15 @@ apps/app/
 **Interfaces:**
 - Consumes: Task 1 types and Yjs layout.
 - Produces (methods on `MarkupDoc`, each one transaction with `actor` as origin):
-  - `insertNodes(actor, parentId: string, specs: NodeSpec[], index?: number): string[]` — returns ids of the top-level inserted nodes
+  - `insertNodes(actor, parentId: string, specs: NodeSpec[], index?: number): string[]` - returns ids of the top-level inserted nodes
   - `replaceNode(actor, targetId: string, specs: NodeSpec[]): string[]`
-  - `updateStyles(actor, updates: { nodeIds: string[]; styles: Record<string, string | number | null> }[]): { ignoredStyles: Record<string, string[]> }` — `null` or `''` removes a property; filtering comes from Task 3's `normalizeStyles`, so in this task pass styles through and return `{}` lists
-  - `setText(actor, updates: { nodeId: string; html: string }[]): void` — only on `text` nodes, else `INVALID_ARGUMENT`
+  - `updateStyles(actor, updates: { nodeIds: string[]; styles: Record<string, string | number | null> }[]): { ignoredStyles: Record<string, string[]> }` - `null` or `''` removes a property; filtering comes from Task 3's `normalizeStyles`, so in this task pass styles through and return `{}` lists
+  - `setText(actor, updates: { nodeId: string; html: string }[]): void` - only on `text` nodes, else `INVALID_ARGUMENT`
   - `moveNodes(actor, moves: Move[]): { results: { nodeId: string; parentId: string; index: number }[]; affectedParents: Record<string, string[]> }`, `type Move = { nodeId: string; before: string } | { nodeId: string; after: string } | { nodeId: string; parentId: string | 'root'; index?: number }`
   - `deleteNodes(actor, ids: string[]): void`
   - `duplicateNodes(actor, items: { id: string; parentId?: string }[]): { sourceId: string; newId: string; descendantIdMap: Record<string, string> }[]`
-  - `renameNodes(actor, updates: { nodeId: string; name: string }[]): void` — names truncated to 50 chars
-  - `setWorking(actor, artboardIds: string[] | 'all', on: boolean): void` — stored in `ydoc.getMap('working')` as artboardId → actor
+  - `renameNodes(actor, updates: { nodeId: string; name: string }[]): void` - names truncated to 50 chars
+  - `setWorking(actor, artboardIds: string[] | 'all', on: boolean): void` - stored in `ydoc.getMap('working')` as artboardId → actor
   - `artboardOf(nodeId: string): string | null`
 
 - [ ] **Step 1: Write failing tests:**
@@ -135,9 +135,9 @@ apps/app/
   - `updateStyles null removes property`
   - `setText on frame throws INVALID_ARGUMENT`
   - `every op records actor as transaction origin` → `ydoc.on('afterTransaction', t => origins.push(t.origin))`, all equal the actor object
-- [ ] **Step 2: Run** `pnpm --filter @markup/doc test ops` — FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @markup/doc test ops` - FAIL.
 - [ ] **Step 3: Implement** `ops.ts`.
-- [ ] **Step 4: Run** — PASS.
+- [ ] **Step 4: Run** - PASS.
 - [ ] **Step 5: Commit** `feat(doc): node operations with actor origins`.
 
 ---
@@ -151,9 +151,9 @@ apps/app/
 **Interfaces:**
 - Consumes: `NodeSpec`, `MarkupDoc.insertNodes/replaceNode/getNode`.
 - Produces:
-  - `normalizeStyles(styles: Record<string, string | number | null>, ctx: { type: NodeType | 'root'; isArtboard: boolean }): { styles: Record<string, string | number | null>; ignored: string[] }` — keys to camelCase; drops `margin*`, `display: grid|inline|inline-grid|table*`, `grid*`; drops text-only props (`fontSize`, `fontFamily`, `fontWeight`, `lineHeight`, `letterSpacing`, `textAlign`, `color`) on non-text nodes (inert, Paper returns them under ignoredStyles); artboards default `display:flex; flexDirection:column`
-  - `parseHtml(html: string): { specs: NodeSpec[]; ignored: string[] }` — parse5 fragment; element with only text/inline children (`span`, `b`, `i`, `em`, `strong`, `a`, `br`) → one `text` node whose `text` is its inner HTML; `img` → `image` (`src`, `markup-asset://` kept verbatim); `svg` → `svg` with outer HTML; every other element (incl. `table`, `tr`, `td`) → `frame`; `layer-name` attr → `name`, else name from tag/text (first 30 chars of text for text nodes); `<x-markup-clone node-id style>` → `cloneOf`
-  - `MarkupDoc.writeHtml(actor, targetNodeId: string, html: string, mode: 'insert-children' | 'replace'): { nodeIds: string[]; ignoredStyles: string[] }` — resolves `cloneOf` by deep-copying the referenced node with style overrides
+  - `normalizeStyles(styles: Record<string, string | number | null>, ctx: { type: NodeType | 'root'; isArtboard: boolean }): { styles: Record<string, string | number | null>; ignored: string[] }` - keys to camelCase; drops `margin*`, `display: grid|inline|inline-grid|table*`, `grid*`; drops text-only props (`fontSize`, `fontFamily`, `fontWeight`, `lineHeight`, `letterSpacing`, `textAlign`, `color`) on non-text nodes (inert, Paper returns them under ignoredStyles); artboards default `display:flex; flexDirection:column`
+  - `parseHtml(html: string): { specs: NodeSpec[]; ignored: string[] }` - parse5 fragment; element with only text/inline children (`span`, `b`, `i`, `em`, `strong`, `a`, `br`) → one `text` node whose `text` is its inner HTML; `img` → `image` (`src`, `markup-asset://` kept verbatim); `svg` → `svg` with outer HTML; every other element (incl. `table`, `tr`, `td`) → `frame`; `layer-name` attr → `name`, else name from tag/text (first 30 chars of text for text nodes); `<x-markup-clone node-id style>` → `cloneOf`
+  - `MarkupDoc.writeHtml(actor, targetNodeId: string, html: string, mode: 'insert-children' | 'replace'): { nodeIds: string[]; ignoredStyles: string[] }` - resolves `cloneOf` by deep-copying the referenced node with style overrides
 
 - [ ] **Step 1: Write failing tests:**
   - `div with inline styles becomes frame` → `{display:'flex', gap:'24px'}` on the spec
@@ -165,7 +165,7 @@ apps/app/
   - `x-markup-clone deep-copies with override` → clone of a 2-child frame has 2 new children, overridden `width`
   - `font props on a frame are ignored`
   - `unknown clone node-id throws NODE_NOT_FOUND`
-- [ ] **Step 2: Run** — FAIL. **Step 3: Implement.** **Step 4: Run** — PASS.
+- [ ] **Step 2: Run** - FAIL. **Step 3: Implement.** **Step 4: Run** - PASS.
 - [ ] **Step 5: Commit** `feat(doc): html import with style dialect`.
 
 ---
@@ -179,10 +179,10 @@ apps/app/
 **Interfaces:**
 - Consumes: `MarkupDoc.getNode`, `writeHtml` (for fixtures).
 - Produces:
-  - `toJsx(doc: MarkupDoc, nodeId: string, opts?: { format?: 'inline-styles' | 'tailwind'; includeNodeIds?: boolean; includeRootPositioning?: boolean }): string` — defaults `inline-styles`, `includeNodeIds: true`, `includeRootPositioning: false` (strips root `position/top/left/right/bottom`); frames → `<div>`, text → `<p>` with inner HTML kept, image → `<img>`, svg verbatim; 2-space indentation
-  - `toTailwindClasses(styles): { className: string; rest: Record<string, string | number> }` — maps display flex, flexDirection, alignItems, justifyContent, flexWrap, position, overflow hidden, and px values of gap/padding*/width/height/borderRadius/fontSize/fontWeight to classes (`gap-[24px]`, `p-[64px]`, `w-[1440px]`, `bg-[#0F3B4C]`, `text-[#fff]`, `rounded-[12px]`, `font-[600]`); anything unmapped stays in `rest` → inline `style`
-  - `treeSummary(doc, nodeId: string, depth = 3): string` — max depth 10; line per node `"<indent>frame \"Hero\" (id) 1440×900"`, unmeasured sizes as `?`, beyond depth `"… N children"`
-  - `findNodes(doc, q: { filters?: { styleName?: string; styleValue?: string }[]; textValue?: string; nodeId?: string; pageId?: string }): { id: string; name: string; component: string; matched: ({ styleName: string; styleValue: string } | { textValue: string })[] }[]` — `*` wildcards; text match case-insensitive, anchored; colors compared by equivalence (normalize hex/rgb to rgba) and a literal color also matches a token whose value resolves to it (needs Task 5; add that one test in Task 5)
+  - `toJsx(doc: MarkupDoc, nodeId: string, opts?: { format?: 'inline-styles' | 'tailwind'; includeNodeIds?: boolean; includeRootPositioning?: boolean }): string` - defaults `inline-styles`, `includeNodeIds: true`, `includeRootPositioning: false` (strips root `position/top/left/right/bottom`); frames → `<div>`, text → `<p>` with inner HTML kept, image → `<img>`, svg verbatim; 2-space indentation
+  - `toTailwindClasses(styles): { className: string; rest: Record<string, string | number> }` - maps display flex, flexDirection, alignItems, justifyContent, flexWrap, position, overflow hidden, and px values of gap/padding*/width/height/borderRadius/fontSize/fontWeight to classes (`gap-[24px]`, `p-[64px]`, `w-[1440px]`, `bg-[#0F3B4C]`, `text-[#fff]`, `rounded-[12px]`, `font-[600]`); anything unmapped stays in `rest` → inline `style`
+  - `treeSummary(doc, nodeId: string, depth = 3): string` - max depth 10; line per node `"<indent>frame \"Hero\" (id) 1440×900"`, unmeasured sizes as `?`, beyond depth `"… N children"`
+  - `findNodes(doc, q: { filters?: { styleName?: string; styleValue?: string }[]; textValue?: string; nodeId?: string; pageId?: string }): { id: string; name: string; component: string; matched: ({ styleName: string; styleValue: string } | { textValue: string })[] }[]` - `*` wildcards; text match case-insensitive, anchored; colors compared by equivalence (normalize hex/rgb to rgba) and a literal color also matches a token whose value resolves to it (needs Task 5; add that one test in Task 5)
 
 - [ ] **Step 1: Write failing tests:**
   - `inline jsx includes ids by default` and `includeNodeIds false strips them`
@@ -207,10 +207,10 @@ apps/app/
 - Produces:
   - `type TokenType = 'breakpoint' | 'color' | 'container' | 'fontFamily' | 'fontSize' | 'fontWeight' | 'letterSpacing' | 'lineHeight' | 'opacity' | 'radius' | 'spacing'`
   - `interface Token { name: string; type: TokenType; value: string | number; description?: string }` stored in `ydoc.getArray('tokens')` (order matters)
-  - `MarkupDoc.createTokens(actor, tokens: Token[]): { name: string; result: 'created' | 'error'; message?: string }[]` — name must match `^--[a-zA-Z0-9_-]+$`, description ≤ 1024
-  - `MarkupDoc.setTokens(actor, edits: { name: string; newName?: string; value?: string | number; description?: string; delete?: boolean }[]): { name: string; result: 'updated' | 'deleted' | 'error'; message?: string }[]` — rename rewrites `var(--old)` references in node styles and other token values
-  - `MarkupDoc.getTokens(opts?: { types?: TokenType[]; namePattern?: string; format?: 'json' | 'css' | 'tailwind' }): Token[] | string` — css → `:root {\n  --x: v;\n}`; tailwind → `@theme {\n  --color-x: v;\n}` (Tailwind v4 namespaces by type: color→`--color-`, spacing→`--spacing-`, radius→`--radius-`, fontSize→`--text-`, fontWeight→`--font-weight-`, fontFamily→`--font-`, lineHeight→`--leading-`, letterSpacing→`--tracking-`, breakpoint→`--breakpoint-`, container→`--container-`, opacity→`--opacity-`; strip a duplicate prefix)
-  - `resolveTokenValue(doc, value: string): string` — follows `var()` aliases, max 16 hops
+  - `MarkupDoc.createTokens(actor, tokens: Token[]): { name: string; result: 'created' | 'error'; message?: string }[]` - name must match `^--[a-zA-Z0-9_-]+$`, description ≤ 1024
+  - `MarkupDoc.setTokens(actor, edits: { name: string; newName?: string; value?: string | number; description?: string; delete?: boolean }[]): { name: string; result: 'updated' | 'deleted' | 'error'; message?: string }[]` - rename rewrites `var(--old)` references in node styles and other token values
+  - `MarkupDoc.getTokens(opts?: { types?: TokenType[]; namePattern?: string; format?: 'json' | 'css' | 'tailwind' }): Token[] | string` - css → `:root {\n  --x: v;\n}`; tailwind → `@theme {\n  --color-x: v;\n}` (Tailwind v4 namespaces by type: color→`--color-`, spacing→`--spacing-`, radius→`--radius-`, fontSize→`--text-`, fontWeight→`--font-weight-`, fontFamily→`--font-`, lineHeight→`--leading-`, letterSpacing→`--tracking-`, breakpoint→`--breakpoint-`, container→`--container-`, opacity→`--opacity-`; strip a duplicate prefix)
+  - `resolveTokenValue(doc, value: string): string` - follows `var()` aliases, max 16 hops
 
 - [ ] **Step 1: Failing tests:** `invalid name returns error entry, others still created`; `alias resolves through two hops`; `rename rewrites var references in styles`; `delete removes token`; `css format`; `tailwind format namespaces color as --color-`; `findNodes literal color finds token-bound usage reported as var(--x)`.
 - [ ] **Step 2–4:** FAIL, implement, PASS.
@@ -218,7 +218,7 @@ apps/app/
 
 ---
 
-### Task 6: History — action log and per-actor undo
+### Task 6: History - action log and per-actor undo
 
 **Files:**
 - Create: `packages/doc/src/history.ts`
@@ -230,8 +230,8 @@ apps/app/
   - `interface LogEntry { seq: number; at: number; actor: Actor; summary: string; reverted: boolean; revertedBy?: string }` stored in `ydoc.getArray('log')`; `seq` starts at 1
   - `MarkupDoc.log(): LogEntry[]` newest last
   - ops accept an optional summary: every public mutating method in Tasks 2–5 gets a trailing `summary?: string`; default summaries: `"Inserted 3 nodes"`, `"Updated styles on 2 nodes"`, `"Moved 1 node"`, `"Deleted 2 nodes"`, `"Duplicated 1 node"`, `"Renamed 1 node"`, `"Set text on 1 node"`, `"Created 2 tokens"`
-  - `class ActorUndo { constructor(doc: MarkupDoc, actor: Actor); undo(): boolean; redo(): boolean; canUndo(): boolean; canRedo(): boolean; destroy(): void }` — wraps `Y.UndoManager` over nodes/pages/tokens with `trackedOrigins: new Set([actor])`, `captureTimeout: 0` (one op = one step)
-  - `MarkupDoc.revertEntry(actor, seq: number): void` — undoes exactly that entry's changes (keep a per-entry `Y.UndoManager` stack item map), marks it `reverted: true, revertedBy: actor.id`; the entry stays in the log (never deleted); reverting an already reverted entry throws `INVALID_ARGUMENT`
+  - `class ActorUndo { constructor(doc: MarkupDoc, actor: Actor); undo(): boolean; redo(): boolean; canUndo(): boolean; canRedo(): boolean; destroy(): void }` - wraps `Y.UndoManager` over nodes/pages/tokens with `trackedOrigins: new Set([actor])`, `captureTimeout: 0` (one op = one step)
+  - `MarkupDoc.revertEntry(actor, seq: number): void` - undoes exactly that entry's changes (keep a per-entry `Y.UndoManager` stack item map), marks it `reverted: true, revertedBy: actor.id`; the entry stays in the log (never deleted); reverting an already reverted entry throws `INVALID_ARGUMENT`
   - log writes themselves are not tracked by any undo manager
 
 - [ ] **Step 1: Failing tests:**
@@ -261,7 +261,7 @@ apps/app/
   - `const tools: Record<ToolName, { description: string; input: z.ZodObject<any> }>` for the phase-1 set: `get_guide, get_basic_info, get_selection, get_tree_summary, get_children, get_node_info, get_jsx, get_computed_styles, get_screenshot, find_nodes, create_artboard, write_html, update_styles, set_text_content, duplicate_nodes, move_nodes, delete_nodes, rename_nodes, finish_working_on_nodes, get_tokens, create_tokens, set_tokens, create_page`; descriptions adapted from feature list sections 18–19 with Markup names; `fileId` optional on every file-scoped tool, `pageId` where Paper has it
   - `type ToolName = keyof typeof tools`; `const DOM_TOOLS = ['get_selection', 'get_computed_styles', 'get_screenshot'] as const`
 - Produces in `@markup/doc`:
-  - `runDocTool(doc: MarkupDoc, actor: Actor, method: Exclude<ToolName, typeof DOM_TOOLS[number] | 'get_guide'>, params: unknown, ctx: { activePageId: string }): unknown` — validates with the zod schema (`INVALID_PARAMS` with zod's message), maps to doc methods; `get_basic_info` returns `{ fileId, fileName, page: {id, name}, pages: {type, id, name?, icon?, isActive}[], nodeCount, artboards: {id, name, width, height, worldX, worldY}[], fonts: string[], tokens: {name, type, value}[] }`; `create_artboard` places at `left = max(right edge of artboards) + 80`, `top = 0` (first artboard at 0,0); `get_guide` lives in the MCP server (static text)
+  - `runDocTool(doc: MarkupDoc, actor: Actor, method: Exclude<ToolName, typeof DOM_TOOLS[number] | 'get_guide'>, params: unknown, ctx: { activePageId: string }): unknown` - validates with the zod schema (`INVALID_PARAMS` with zod's message), maps to doc methods; `get_basic_info` returns `{ fileId, fileName, page: {id, name}, pages: {type, id, name?, icon?, isActive}[], nodeCount, artboards: {id, name, width, height, worldX, worldY}[], fonts: string[], tokens: {name, type, value}[] }`; `create_artboard` places at `left = max(right edge of artboards) + 80`, `top = 0` (first artboard at 0,0); `get_guide` lives in the MCP server (static text)
 
 - [ ] **Step 1: Failing tests:** protocol: `every tool has description and object schema`, `write_html requires html, targetNodeId, mode`. doc: `create_artboard places 80px right of last`, `write_html then get_jsx round trip`, `invalid params returns INVALID_PARAMS`, `get_basic_info lists artboards and tokens`.
 - [ ] **Step 2–4:** FAIL, implement, PASS.
@@ -269,7 +269,7 @@ apps/app/
 
 ---
 
-### Task 8: `markup mcp` — hub and MCP server
+### Task 8: `markup mcp` - hub and MCP server
 
 **Files:**
 - Create: `packages/mcp/{package.json,tsconfig.json}` (bin `markup` → `dist/cli.js`), `packages/mcp/src/{cli.ts,hub.ts,server.ts,guide.ts}`
@@ -278,9 +278,9 @@ apps/app/
 **Interfaces:**
 - Consumes: `@markup/protocol`.
 - Produces:
-  - `startHub(port = BRIDGE_PORT): Promise<Hub>`; `interface Hub { request(msg: Omit<RequestMsg, 'type' | 'id'>): Promise<unknown>; close(): Promise<void> }` — binds `127.0.0.1`; routes a request to the editor whose `files` contain `fileId`, else to the editor with an `active` file; no editor → `NO_EDITOR` ("Markup isn't running with a file open. Open Markup, open a file, then retry."); editor socket closes with pending requests → `EDITOR_DISCONNECTED`; 30 s → `TIMEOUT`
-  - `connectOrHost(port): Promise<Hub>` — try `startHub`; on `EADDRINUSE` connect as `role: 'agent'` and verify the peer's hello has `app: 'markup'` within 2 s; otherwise throw `Port 29980 is in use by another program. Free it, then restart your agent.`
-  - `createServer(hub: Hub, agentName: string): McpServer` — registers every `tools` entry with its zod shape; `get_guide` answers from `guide.ts` (topics `markup-mcp-instructions`, `mobile-status-bar`); results returned as `{ content: [{ type: 'text', text: JSON.stringify(result) }] }`, `get_screenshot` as `{ type: 'image', data, mimeType: 'image/png' }`; bridge errors → `isError: true` with the message
+  - `startHub(port = BRIDGE_PORT): Promise<Hub>`; `interface Hub { request(msg: Omit<RequestMsg, 'type' | 'id'>): Promise<unknown>; close(): Promise<void> }` - binds `127.0.0.1`; routes a request to the editor whose `files` contain `fileId`, else to the editor with an `active` file; no editor → `NO_EDITOR` ("Markup isn't running with a file open. Open Markup, open a file, then retry."); editor socket closes with pending requests → `EDITOR_DISCONNECTED`; 30 s → `TIMEOUT`
+  - `connectOrHost(port): Promise<Hub>` - try `startHub`; on `EADDRINUSE` connect as `role: 'agent'` and verify the peer's hello has `app: 'markup'` within 2 s; otherwise throw `Port 29980 is in use by another program. Free it, then restart your agent.`
+  - `createServer(hub: Hub, agentName: string): McpServer` - registers every `tools` entry with its zod shape; `get_guide` answers from `guide.ts` (topics `markup-mcp-instructions`, `mobile-status-bar`); results returned as `{ content: [{ type: 'text', text: JSON.stringify(result) }] }`, `get_screenshot` as `{ type: 'image', data, mimeType: 'image/png' }`; bridge errors → `isError: true` with the message
   - CLI: `markup mcp` → `connectOrHost` + `StdioServerTransport`; agent name from MCP `clientInfo.name`
 
 - [ ] **Step 1: Failing tests** (fake editor = `ws` client sending hello with one active file and echoing requests):
@@ -297,7 +297,7 @@ apps/app/
 
 ---
 
-### Task 9: Editor app — store, persistence, canvas rendering
+### Task 9: Editor app - store, persistence, canvas rendering
 
 **Files:**
 - Create: `apps/app/{package.json,index.html,vite.config.ts,tsconfig.json}`, `src/main.tsx`, `src/App.tsx`, `src/store/{DocProvider.tsx,hooks.ts,persistence.ts}`, `src/canvas/{Canvas.tsx,NodeView.tsx,viewport.ts}`
@@ -307,8 +307,8 @@ apps/app/
 - Consumes: `MarkupDoc`, `Actor`.
 - Produces:
   - `DocProvider({ doc, actor, children })`, `useDoc(): { doc: MarkupDoc; actor: Actor; undo: ActorUndo }`
-  - `useNode(id): MarkupNode | undefined`, `useChildren(id): string[]`, `usePages(): PageEntry[]` — subscribe with `observeDeep` on the node's Y.Map, re-render only that node
-  - `openLocalDoc(fileId?: string): Promise<MarkupDoc>` — `y-indexeddb` provider named `markup:<fileId>`; when no fileId, the last opened file from `localStorage['markup:last']` or a new doc
+  - `useNode(id): MarkupNode | undefined`, `useChildren(id): string[]`, `usePages(): PageEntry[]` - subscribe with `observeDeep` on the node's Y.Map, re-render only that node
+  - `openLocalDoc(fileId?: string): Promise<MarkupDoc>` - `y-indexeddb` provider named `markup:<fileId>`; when no fileId, the last opened file from `localStorage['markup:last']` or a new doc
   - `interface Viewport { x: number; y: number; zoom: number }`; `screenToWorld(v, p)`, `worldToScreen(v, p)`, `zoomAt(v, screenPoint, factor): Viewport` (zoom clamped 0.02–256)
   - `Canvas` renders the active page root's artboards as absolutely positioned DOM at world coords inside one `transform: translate() scale()` layer; wheel = pan, ctrl/⌘+wheel = zoom at cursor, Space/H drag = pan
   - `NodeView({ id })` renders a node as real DOM: frame → `div`, text → `p` with `dangerouslySetInnerHTML` (sanitized: allow only inline formatting tags and `style`), image → `img`, svg → sanitized inline SVG; `data-node-id` on each element; hidden nodes `display:none`
@@ -330,7 +330,7 @@ apps/app/
 - Consumes: Task 9 hooks, `MarkupDoc` ops, `ActorUndo`.
 - Produces:
   - selection state `useSelection(): { ids: string[]; set(ids: string[]): void }` (local only, also exposed to the bridge as `getSelection()`)
-  - `hitTest(doc, worldPoint, opts: { deep: boolean }): string | null` — top-most visible, unlocked node; non-deep returns the direct child of the artboard (Paper's shallow selection), deep (⌘-click) the leaf
+  - `hitTest(doc, worldPoint, opts: { deep: boolean }): string | null` - top-most visible, unlocked node; non-deep returns the direct child of the artboard (Paper's shallow selection), deep (⌘-click) the leaf
   - drag move: absolute-positioned nodes and artboards update `left/top`; flex children reorder within the parent (move to sibling index by pointer position); resize handles update `width/height` in px; each gesture = one op (styles committed on pointerup, live preview via local state)
   - tools: `V` move, `F` frame (drag to draw an absolute frame/artboard), `R` rect, `T` text (click to create text node "Text", enter edit mode), `H` hand
   - keys: `Delete/Backspace` delete, `⌘D` duplicate, `Enter` select children, `Esc` select parent, `⌘Z / ⇧⌘Z` own undo/redo, `⌘R` rename, `⇧⌘H` hide, `⇧⌘L` lock, `⇧1` zoom to fit, `⌘0` 100%, `⇧F` wrap in frame, `⇧A` wrap in flex
@@ -350,7 +350,7 @@ apps/app/
 
 **Interfaces:**
 - Consumes: `useSelection`, `useNode`, `MarkupDoc.updateStyles`.
-- Produces: sections editing the selection (mixed values show "Mixed"): Layout (display flex/none-flex, direction, gap, padding 4-side, align/justify, wrap), Size (width/height as Fixed px / Fill (`flex:1` or `100%` by parent axis) / Fit (`fit-content`)), Fill (backgroundColor hex or any CSS color, opacity), Text (fontFamily, fontSize, fontWeight, lineHeight, letterSpacing, textAlign, color), Radius (all or per corner), Other styles (every style key no section owns, editable as key/value — Paper's "Other styles")
+- Produces: sections editing the selection (mixed values show "Mixed"): Layout (display flex/none-flex, direction, gap, padding 4-side, align/justify, wrap), Size (width/height as Fixed px / Fill (`flex:1` or `100%` by parent axis) / Fit (`fit-content`)), Fill (backgroundColor hex or any CSS color, opacity), Text (fontFamily, fontSize, fontWeight, lineHeight, letterSpacing, textAlign, color), Radius (all or per corner), Other styles (every style key no section owns, editable as key/value - Paper's "Other styles")
 - [ ] **Step 1: Failing tests:** `editing gap writes one updateStyles op`, `mixed selection shows Mixed`, `unknown style appears in Other styles`, `Fill sizing sets flex 1 in a row parent`.
 - [ ] **Step 2–4:** FAIL, implement, PASS.
 - [ ] **Step 5: Commit** `feat(app): inspector`.
@@ -366,7 +366,7 @@ apps/app/
 **Interfaces:**
 - Consumes: `@markup/protocol` messages, `runDocTool`, `ActorUndo`, `MarkupDoc.log/revertEntry`, `setWorking`.
 - Produces:
-  - `connectBridge(opts: { doc: MarkupDoc; getSelection(): string[]; activePageId(): string; url?: string }): { close(): void; status: 'connecting' | 'connected' | 'offline' }` — reconnects every 2 s while offline, sends `hello` + `files`; per agent `clientId` creates `Actor { id: 'agent:' + clientId, kind: 'agent', name }` and runs doc tools with it
+  - `connectBridge(opts: { doc: MarkupDoc; getSelection(): string[]; activePageId(): string; url?: string }): { close(): void; status: 'connecting' | 'connected' | 'offline' }` - reconnects every 2 s while offline, sends `hello` + `files`; per agent `clientId` creates `Actor { id: 'agent:' + clientId, kind: 'agent', name }` and runs doc tools with it
   - DOM tools: `get_selection` → `{ nodes: {id, name, component, width, height, artboardId}[] }`; `get_computed_styles` → `getComputedStyle` of `[data-node-id]` elements, only properties that differ from the element's defaults; `get_screenshot` → `html-to-image` `toPng` of the node at `scale` 1 or 2, longest side capped at 2048 px, base64 without the data-URL prefix
   - writes by an agent call `setWorking(actor, [artboard], true)`; `WorkingIndicator` shows "<agent name> is editing" on that artboard's label until `finish_working_on_nodes`
   - `AgentLog` panel: `doc.log()` newest first, each row `No. 047 · 14:32 · <actor> · <summary>`, a Revert button on unreverted rows, reverted rows struck through and labelled "Reverted"
@@ -385,9 +385,9 @@ apps/app/
 
 **Interfaces:**
 - Consumes: the web app as-is; the bridge client connects to `ws://127.0.0.1:29980` from the webview (add it to the Tauri CSP `connect-src`).
-- [ ] **Step 1: Run** `pnpm --filter app desktop:dev` — window opens with the editor, persistence works across restarts.
-- [ ] **Step 2: Run** the Task 12 manual MCP check against the desktop window — agent edits land.
-- [ ] **Step 3: Run** `pnpm --filter app desktop:build` — installer produced under `src-tauri/target/release/bundle`.
+- [ ] **Step 1: Run** `pnpm --filter app desktop:dev` - window opens with the editor, persistence works across restarts.
+- [ ] **Step 2: Run** the Task 12 manual MCP check against the desktop window - agent edits land.
+- [ ] **Step 3: Run** `pnpm --filter app desktop:build` - installer produced under `src-tauri/target/release/bundle`.
 - [ ] **Step 4: Commit** `feat(desktop): tauri 2 shell`.
 
 ---

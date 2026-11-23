@@ -4,7 +4,7 @@ import { capture, TOO_LARGE, type CaptureLimits } from '../src/capture/serialize
 import { fakeEnv } from './fakeEnv';
 import { fixture, PNG } from './fixtures';
 
-const META = { title: 'Acme — Home', url: 'https://acme.test/' };
+const META = { title: 'Acme - Home', url: 'https://acme.test/' };
 
 async function run(name: string, limits?: CaptureLimits) {
   const f = fixture(name);

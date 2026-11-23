@@ -1,6 +1,6 @@
 /**
  * Exact snapshot: the page's own element structure with its computed CSS inline, in Markup's permissive `any`
- * dialect. Markup's canvas renders real HTML/CSS, so the same CSS lays out the same way — no re-derivation into
+ * dialect. Markup's canvas renders real HTML/CSS, so the same CSS lays out the same way - no re-derivation into
  * flex/absolute (that is the simplified serializer in serialize.ts).
  */
 import { rootClip } from './clip';
@@ -31,6 +31,7 @@ import {
   visible,
   type CaptureLimits,
   type PseudoInfo,
+  captureTargets,
 } from './dom';
 import type { CaptureEnv } from './env';
 import { backgroundDecls, canvasPng, concat, ImageLoader, maskDecls, PLACEHOLDER_COLOR, PLACEHOLDER_NAME, screenImage } from './images';
@@ -162,8 +163,8 @@ class Exact {
   }
 
   /**
-   * Computed styles for an output element. `box` elements (div, p, img…) always say their display — the canvas's
-   * tags have their own defaults — and keep their size unless they are inline; inline formatting keeps only what
+   * Computed styles for an output element. `box` elements (div, p, img…) always say their display - the canvas's
+   * tags have their own defaults - and keep their size unless they are inline; inline formatting keeps only what
    * differs.
    */
   styles(el: Element | null, cs: CSSStyleDeclaration, parent: CSSStyleDeclaration, kind: 'box' | 'inline', replaced = false): Styles {
@@ -685,10 +686,10 @@ export async function blankImage(doc: Document, dataUrl: string): Promise<boolea
   }
 }
 
-/** Declarations in order; a target's placement replaces its own position, offsets, margins and float. */
+/** Declarations in order; a target's placement replaces its own position, offsets, margins, float and anything else it sets. */
 function placed(styles: Styles, place?: Decl[]): Decl[] {
   if (!place) return styleOf(styles);
-  for (const k of ['position', 'float', ...SIDES, ...SIDES.map((s) => `margin-${s}`)]) styles.delete(k);
+  for (const k of ['position', 'float', ...SIDES, ...SIDES.map((s) => `margin-${s}`), ...place.map(([k]) => k)]) styles.delete(k);
   return [...place, ...styleOf(styles)];
 }
 
@@ -725,7 +726,7 @@ export async function captureExact(
   meta: { title: string; url: string },
   limits: CaptureLimits = {},
 ): Promise<string> {
-  const els = targets === 'page' ? [document.documentElement] : targets;
+  const els = targets === 'page' ? [document.documentElement] : captureTargets(targets);
   if (els.length === 0) throw new Error('Nothing to capture');
   env = memoStyles(env);
   await env.loadMotions?.();
@@ -737,6 +738,9 @@ export async function captureExact(
   let left = 0;
   const places: Decl[][] = rects.map((r) => {
     const place: Decl[] = [['position', 'absolute'], ['left', px(left)], ['top', '0px']];
+    // A whole page is the browser viewport: it fills the snapshot root, so resizing the artboard shows more of
+    // the page (or less) instead of growing empty space around a viewport-sized box that clips its content.
+    if (targets === 'page') place.push(['width', '100%'], ['height', '100%']);
     left += r.width + TARGET_GAP;
     return place;
   });
