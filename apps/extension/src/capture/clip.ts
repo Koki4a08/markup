@@ -55,7 +55,7 @@ const pxs = (n: number) => `${Math.round(n * 100) / 100}px`;
 /**
  * The shape of an element as the page paints it: its own rounded corners, cut by every ancestor that clips
  * (overflow hidden/auto/scroll). Where the element fills a clipping ancestor's corner, that ancestor's inner radius
- * rounds it — the usual "table inside a rounded box" case.
+ * rounds it - the usual "table inside a rounded box" case.
  */
 export function visibleShape(el: Element, env: ShapeEnv): Shape {
   const own = env.style(el);

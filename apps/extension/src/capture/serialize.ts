@@ -25,6 +25,7 @@ import {
   visible,
   type CaptureLimits,
   type PseudoInfo,
+  captureTargets,
 } from './dom';
 import type { CaptureEnv } from './env';
 import { backgroundDecls, canvasPng, concat, ImageLoader, maskDecls, PLACEHOLDER_COLOR, PLACEHOLDER_NAME, screenImage } from './images';
@@ -557,7 +558,7 @@ export async function capture(
   meta: { title: string; url: string },
   limits: CaptureLimits = {},
 ): Promise<string> {
-  const els = targets === 'page' ? [document.documentElement] : targets;
+  const els = targets === 'page' ? [document.documentElement] : captureTargets(targets);
   if (els.length === 0) throw new Error('Nothing to capture');
   env = memoStyles(env);
   await env.loadMotions?.();

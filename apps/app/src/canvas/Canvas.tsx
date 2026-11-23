@@ -123,7 +123,7 @@ export function Canvas({ rootId, viewport: viewportStore, overlay, onPointerDown
     >
       <div className="canvas-backdrop" aria-hidden>
         {artboards.map((id) => (
-          <ArtboardBackdrop key={id} id={id} viewport={viewport} rect={rects.get(id) ?? null} working={!!working[id]} />
+          <ArtboardBackdrop key={id} id={id} viewport={viewport} rect={rects.get(id) ?? null} />
         ))}
       </div>
       <div ref={worldRef} className="canvas-world" style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})` }}>
@@ -242,17 +242,17 @@ function useArtboardRects(ids: string[], containerRef: RefObject<HTMLDivElement 
 }
 
 /**
- * Drop shadow (and, while an agent edits it, a violet ring) behind one artboard. Drawn in screen space
- * under the world so it never becomes part of the design DOM that agents read and exports copy.
+ * Drop shadow behind one artboard. Drawn in screen space under the world so it never becomes part of
+ * the design DOM that agents read and exports copy.
  */
-function ArtboardBackdrop({ id, viewport, rect, working }: { id: string; viewport: Viewport; rect: Rect | null; working: boolean }) {
+function ArtboardBackdrop({ id, viewport, rect }: { id: string; viewport: Viewport; rect: Rect | null }) {
   const node = useNode(id);
   if (!node || node.hidden || !rect?.width || !rect.height) return null;
   const p = worldToScreen(viewport, rect);
   const radius = parsePxValue(node.styles.borderRadius) * viewport.zoom;
   return (
     <div
-      className={`artboard-backdrop ${working ? 'is-working' : ''}`}
+      className="artboard-backdrop"
       style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: rect.width * viewport.zoom, height: rect.height * viewport.zoom, borderRadius: radius || undefined }}
     />
   );

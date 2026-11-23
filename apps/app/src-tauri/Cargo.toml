@@ -1,6 +1,6 @@
 [package]
 name = "markup-app"
-version = "0.2.0"
+version = "0.3.0"
 description = "Markup: an open-source HTML/CSS design canvas"
 authors = ["Markup contributors"]
 license = ""

@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { MarkupNode, Move } from '@markup/doc';
 import { icons } from './icons';
 import { IdSetStore, useIdIn } from './idSetStore';
@@ -6,6 +6,7 @@ import { useDoc } from '../store/DocProvider';
 import { useNode, usePages } from '../store/hooks';
 import { useSelection } from '../canvas/selection';
 import { isFreshFocus, keepEditingAcrossWindowBlur } from '../ui/windowFocus';
+import { useDismiss } from '../ui/useDismiss';
 
 interface Props {
   activePageId: string;
@@ -47,6 +48,20 @@ export const LayersPanel = memo(function LayersPanel({ activePageId, onPage, ren
   const pages = usePages();
   const page = pages.find((p) => p.type === 'page' && p.id === activePageId);
   const root = useNode(page && page.type === 'page' ? page.rootId : '');
+  const pageCount = pages.filter((p) => p.type === 'page').length;
+  const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
+  const [pageMenu, setPageMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const closePageMenu = useCallback(() => setPageMenu(null), []);
+  const deletePage = (id: string) => {
+    const list = pages.filter((p) => p.type === 'page');
+    if (list.length < 2) return;
+    // Leaving the deleted page: open its neighbour (the next one, or the previous at the end of the list).
+    if (id === activePageId) {
+      const i = list.findIndex((p) => p.id === id);
+      onPage((list[i + 1] ?? list[i - 1])!.id);
+    }
+    doc.deletePage(actor, id);
+  };
   const drop = (nodeId: string, targetId: string, zone: DropZone) => {
     if (nodeId === targetId) return;
     const move: Move = zone === 'inside' ? { nodeId, parentId: targetId, index: 0 } : zone === 'before' ? { nodeId, before: targetId } : { nodeId, after: targetId };
@@ -112,15 +127,41 @@ export const LayersPanel = memo(function LayersPanel({ activePageId, onPage, ren
             p.type === 'divider' ? (
               <li key={p.id} className="page-divider" role="separator" />
             ) : (
-              <li key={p.id} role="option" aria-selected={p.id === activePageId}>
-                <button className={`row ${p.id === activePageId ? 'is-active' : ''}`} onClick={() => onPage(p.id)}>
-                  <span className="row-icon">{icons.page}</span>
-                  <span className="row-name">{p.name}</span>
-                </button>
-              </li>
+              <PageRow
+                key={p.id}
+                id={p.id}
+                name={p.name}
+                active={p.id === activePageId}
+                canDelete={pageCount > 1}
+                renaming={renamingPageId === p.id}
+                onSelect={() => onPage(p.id)}
+                onRename={() => setRenamingPageId(p.id)}
+                onRenameEnd={(name) => {
+                  setRenamingPageId(null);
+                  if (name !== null && name !== p.name) doc.updatePages(actor, [{ pageId: p.id, name }], 'Renamed 1 page');
+                }}
+                onDelete={() => deletePage(p.id)}
+                onMenu={(x, y) => setPageMenu({ id: p.id, x, y })}
+              />
             ),
           )}
         </ul>
+        {pageMenu && (
+          <PageMenu
+            x={pageMenu.x}
+            y={pageMenu.y}
+            canDelete={pageCount > 1}
+            onClose={closePageMenu}
+            onRename={() => {
+              setPageMenu(null);
+              setRenamingPageId(pageMenu.id);
+            }}
+            onDelete={() => {
+              setPageMenu(null);
+              deletePage(pageMenu.id);
+            }}
+          />
+        )}
       </section>
       <section className="panel-section layers">
         <div className="panel-heading">
@@ -136,6 +177,143 @@ export const LayersPanel = memo(function LayersPanel({ activePageId, onPage, ren
     </aside>
   );
 });
+
+interface PageRowProps {
+  id: string;
+  name: string;
+  active: boolean;
+  canDelete: boolean;
+  renaming: boolean;
+  onSelect(): void;
+  onRename(): void;
+  /** The new name, or null when the rename was cancelled or left empty. */
+  onRenameEnd(name: string | null): void;
+  onDelete(): void;
+  onMenu(x: number, y: number): void;
+}
+
+function PageRow({ id, name, active, canDelete, renaming, onSelect, onRename, onRenameEnd, onDelete, onMenu }: PageRowProps) {
+  const done = useRef(false);
+  useEffect(() => {
+    if (renaming) done.current = false;
+  }, [renaming]);
+  // Enter, Escape and blur can all fire for one rename: only the first one counts.
+  const finish = (value: string | null) => {
+    if (done.current) return;
+    done.current = true;
+    const trimmed = value?.trim();
+    onRenameEnd(trimmed ? trimmed : null);
+  };
+
+  return (
+    <li role="option" aria-selected={active}>
+      <div
+        className={`row page-row ${active ? 'is-active' : ''}`}
+        data-page-id={id}
+        tabIndex={renaming ? -1 : 0}
+        onClick={() => !renaming && onSelect()}
+        onDoubleClick={onRename}
+        onKeyDown={(e) => {
+          if (renaming || e.target !== e.currentTarget) return;
+          const action =
+            e.key === 'Enter' || e.key === ' ' ? onSelect : e.key === 'F2' ? onRename : (e.key === 'Delete' || e.key === 'Backspace') && canDelete ? onDelete : null;
+          if (!action) return;
+          // Keep handled keys from the editor's shortcuts (Delete would remove the selected layers instead).
+          e.preventDefault();
+          e.stopPropagation();
+          action();
+        }}
+        onContextMenu={(e) => {
+          if (renaming) return;
+          e.preventDefault();
+          onMenu(e.clientX, e.clientY);
+        }}
+      >
+        <span className="row-icon">{icons.page}</span>
+        {renaming ? (
+          <input
+            className="rename-input"
+            defaultValue={name}
+            aria-label="Page name"
+            autoFocus
+            onFocus={(e) => isFreshFocus(e.currentTarget) && e.currentTarget.select()}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') finish(e.currentTarget.value);
+              if (e.key === 'Escape') finish(null);
+            }}
+            // Switching to another app keeps the rename open; only a blur inside the app commits it.
+            onBlur={(e) => keepEditingAcrossWindowBlur(e.currentTarget) || finish(e.currentTarget.value)}
+          />
+        ) : (
+          <span className="row-name">{name}</span>
+        )}
+        {canDelete && !renaming && (
+          <span className="row-actions">
+            <button
+              className="icon-button"
+              aria-label={`Delete ${name}`}
+              data-tip="Delete page"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              onDoubleClick={(e) => e.stopPropagation()}
+            >
+              {icons.trash}
+            </button>
+          </span>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function PageMenu({ x, y, canDelete, onClose, onRename, onDelete }: { x: number; y: number; canDelete: boolean; onClose(): void; onRename(): void; onDelete(): void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(onClose, { ref });
+  useEffect(() => {
+    ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    // Capture phase, so Escape closes only the menu and never reaches the editor's shortcuts.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const buttons = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+        const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        buttons[(i + (e.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [onClose]);
+
+  return (
+    <div ref={ref} className="context-menu" role="menu" aria-label="Page actions" style={{ left: Math.min(x, window.innerWidth - 220), top: Math.min(y, window.innerHeight - 100) }}>
+      <button role="menuitem" className="row" onClick={onRename}>
+        Rename
+      </button>
+      <button role="menuitem" className="row" disabled={!canDelete} onClick={onDelete}>
+        Delete
+      </button>
+    </div>
+  );
+}
 
 interface RowProps {
   id: string;

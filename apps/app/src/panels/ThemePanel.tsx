@@ -41,8 +41,8 @@ const TYPE_LABELS: Record<TokenType, string> = {
 type Filter = 'all' | 'used';
 
 /**
- * Theme: what the selection (or, with nothing selected, the page) is made of — light or dark, its colours,
- * type, radius and spacing — then the file's tokens grouped by type, what uses them, and editing.
+ * Theme: what the selection (or, with nothing selected, the page) is made of - light or dark, its colours,
+ * type, radius and spacing - then the file's tokens grouped by type, what uses them, and editing.
  */
 export const ThemePanel = memo(function ThemePanel({ pageRootId = '' }: { pageRootId?: string }) {
   const { doc } = useDoc();
@@ -248,9 +248,9 @@ function ScopeTheme({ name, theme }: { name: string; theme: SubtreeTheme }) {
           </span>
           <dl className="theme-pair-values">
             <dt>Background</dt>
-            <dd>{background ? hexLabel(background) : '—'}</dd>
+            <dd>{background ? hexLabel(background) : '-'}</dd>
             <dt>Text</dt>
-            <dd>{text ? hexLabel(text) : '—'}</dd>
+            <dd>{text ? hexLabel(text) : '-'}</dd>
           </dl>
           {ratio && (
             <span className={`theme-contrast ${ratio < 4.5 ? 'is-low' : ''}`} data-tip="WCAG contrast of the text on the background">

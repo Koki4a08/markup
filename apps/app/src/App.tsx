@@ -148,7 +148,7 @@ export function Shell() {
   }, [runTab]);
 
   const doc = activeId ? workspace.doc(activeId) : undefined;
-  const title = dashboard || !active ? 'Markup' : `${active.name} — Markup`;
+  const title = dashboard || !active ? 'Markup' : `${active.name} - Markup`;
   useEffect(() => setWindowTitle(title), [title]);
   // Leaving the editor for the dashboard: refresh this file's card from what is on screen right now.
   const toggleDashboard = () => {
