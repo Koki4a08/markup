@@ -76,8 +76,15 @@ jobs:
           tauriScript: pnpm exec tauri
           tagName: ${{ env.TAG }}
           releaseName: Markup ${{ env.TAG }}
-          releaseBody: Download Markup for your platform below. On Windows, Markup-Setup.exe installs the latest version for you.
-          releaseDraft: false
+          releaseBody: |
+            Download Markup for your platform below.
+
+            - **Windows:** `Markup-Setup.exe` installs the newest version for your user and opens it. The `.exe` and `.msi` are full offline installers.
+            - **macOS:** `aarch64.dmg` for Apple silicon, `x64.dmg` for Intel. Builds are not notarized yet: if macOS refuses to open Markup, choose Open Anyway in System Settings > Privacy & Security.
+            - **Linux:** `.AppImage` (run `chmod +x` first), `.deb` or `.rpm`.
+          # Stay a draft until every platform and Markup Setup are attached, so
+          # "latest" never points at a half-built release. The setup job publishes it.
+          releaseDraft: true
           prerelease: false
 
   setup:
@@ -115,3 +122,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: gh release upload "$TAG" apps/installer/src-tauri/target/release/Markup-Setup.exe --clobber
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release edit "$TAG" --draft=false --latest
