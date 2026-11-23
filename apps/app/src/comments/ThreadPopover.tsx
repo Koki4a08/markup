@@ -23,8 +23,12 @@ export function ThreadPopover({ thread, left, top, onClose, onCreate }: Props) {
   const boxRef = useRef<HTMLTextAreaElement>(null);
   const lastAt = thread ? lastMessage(thread)?.createdAt : undefined;
 
+  // A new pin opens from a canvas press, whose default mousedown action would move focus back to the
+  // page right after this effect; focusing a frame later lets the user start typing at once.
   useEffect(() => {
     boxRef.current?.focus();
+    const frame = requestAnimationFrame(() => boxRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
   }, [thread?.id]);
   // Reading the thread while it is open keeps new replies from turning into unread dots.
   useEffect(() => {

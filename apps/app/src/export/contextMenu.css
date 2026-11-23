@@ -15,7 +15,8 @@
   box-shadow: var(--shadow-pop, 0 12px 32px -6px rgba(0, 0, 0, 0.6));
   color: var(--text, #ededef);
   font-size: 12px;
-  animation: canvas-menu-in 110ms ease-out;
+  animation: canvas-menu-in var(--dur, 180ms) var(--ease-out, ease-out);
+  transform-origin: top left;
 }
 
 .canvas-submenu {
@@ -25,7 +26,8 @@
 @keyframes canvas-menu-in {
   from {
     opacity: 0;
-    transform: translateY(-2px);
+    transform: scale(0.97);
+    filter: blur(2px);
   }
 }
 
@@ -45,6 +47,7 @@
   font: inherit;
   text-align: left;
   cursor: default;
+  transition: background-color 60ms ease-out;
 }
 
 .canvas-menu-label {

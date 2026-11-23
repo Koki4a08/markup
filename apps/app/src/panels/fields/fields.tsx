@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { StyleValue } from '@markup/doc';
 import { endPreview } from '../../canvas/preview';
+import { SegmentThumb } from '../../ui/SegmentThumb';
 
 export const MIXED = Symbol('mixed');
 export type FieldValue = StyleValue | undefined | typeof MIXED;
@@ -191,6 +192,7 @@ export interface SegmentOption {
 export function SegmentedField({ label, value, options, onChange, span = 2 }: { label: string; value: FieldValue; options: SegmentOption[]; onChange(value: string): void; span?: 1 | 2 }) {
   return (
     <div className={`segmented is-field ${span === 2 ? 'is-wide' : ''}`} role="radiogroup" aria-label={label}>
+      <SegmentThumb />
       {options.map((o) => {
         const on = value === o.value;
         return (

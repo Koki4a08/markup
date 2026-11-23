@@ -151,6 +151,12 @@ export class MarkupLibrary {
     });
   }
 
+  /** Replaces the dashboard image only. Unlike touch, it is not an edit, so updatedAt stays. */
+  setThumbnail(id: string, thumbnail: string): void {
+    const m = this.require(id);
+    if (m.get('thumbnail') !== thumbnail) this.ydoc.transact(() => m.set('thumbnail', thumbnail));
+  }
+
   /** Every item, archived ones included, in no particular order. */
   all(): LibraryItem[] {
     return [...this.items.values()].map(toItem);

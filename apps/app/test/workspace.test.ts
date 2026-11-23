@@ -133,6 +133,25 @@ describe('workspace', () => {
     await vi.waitFor(() => expect(library.get(id)!.thumbnail).toBe('data:image/png;base64,AAA'));
   });
 
+  it('refreshes the thumbnail of the tab going to the background without counting it as an edit', async () => {
+    const captured: string[] = [];
+    const { workspace, addFile, library } = memoryWorkspace({
+      captureThumbnail: async (fileId) => {
+        captured.push(fileId);
+        return `data:image/png;base64,${fileId}`;
+      },
+    });
+    const a = addFile('A');
+    const b = addFile('B');
+    await workspace.open(a);
+    await workspace.open(b);
+    workspace.activate(a);
+    const before = library.get(b)!.updatedAt;
+    await vi.waitFor(() => expect(library.get(b)!.thumbnail).toBe(`data:image/png;base64,${b}`));
+    expect(captured).toContain(b);
+    expect(library.get(b)!.updatedAt).toBe(before);
+  });
+
   it('restore shows the saved active tab first and loads the rest in the background, in saved order', async () => {
     const gates = new Map<string, () => void>();
     const { workspace, addFile } = memoryWorkspace({
