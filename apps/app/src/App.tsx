@@ -150,12 +150,17 @@ export function Shell() {
   const doc = activeId ? workspace.doc(activeId) : undefined;
   const title = dashboard || !active ? 'Markup' : `${active.name} — Markup`;
   useEffect(() => setWindowTitle(title), [title]);
+  // Leaving the editor for the dashboard: refresh this file's card from what is on screen right now.
+  const toggleDashboard = () => {
+    if (!dashboard && doc) workspace.refreshThumbnail(doc.fileId);
+    setDashboard((d) => (d && doc ? false : true));
+  };
   // One undo history per open tab, kept by the workspace so it survives tab switches and the dashboard.
   const undo = doc ? workspace.tabState(doc.fileId, 'undo', () => new ActorUndo(doc, LOCAL_USER), (u) => u.destroy()) : undefined;
   return (
     <div className="app-shell">
       <TooltipLayer />
-      <FileTabs dashboard={dashboard || !doc} onDashboard={() => setDashboard((d) => (d && doc ? false : true))} onTab={() => setDashboard(false)} shortcut={shortcut} />
+      <FileTabs dashboard={dashboard || !doc} onDashboard={toggleDashboard} onTab={() => setDashboard(false)} shortcut={shortcut} />
       {dashboard || !doc ? (
         <Dashboard onOpened={() => setDashboard(false)} />
       ) : (

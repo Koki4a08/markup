@@ -9,7 +9,7 @@ import { anchorWorld } from '../comments/anchor';
 import { CommentLayer } from '../comments/CommentLayer';
 import { DEFAULT_FILTER, markSeen, type CommentFilter, type Draft } from '../comments/state';
 import { TOOLS, type Tool } from '../canvas/tools';
-import { fitRect, screenToWorld, stepZoom, worldToScreen, zoomAt, type Viewport } from '../canvas/viewport';
+import { blendViewport, fitRect, screenToWorld, stepZoom, worldToScreen, zoomAt, type Viewport } from '../canvas/viewport';
 import { runCommand, type CommandContext } from '../commands/commands';
 import { isMacPlatform, resolveShortcut } from '../commands/keyboard';
 import { icons } from '../panels/icons';
@@ -53,6 +53,8 @@ const RAIL_ORDER: Tool[] = ['move', 'hand', 'frame', 'rect', 'text', 'comment'];
 const RAIL_TOOLS = RAIL_ORDER.map((id) => TOOLS.find((t) => t.id === id)!);
 const TOOL_GROUP_ENDS = new Set<Tool>(['hand', 'text']);
 const RAIL_WIDTH = 44;
+/** How long zoom commands take to glide to their view. */
+const GLIDE_MS = 320;
 
 const CURSORS: Record<Tool, string> = { move: 'default', frame: 'crosshair', rect: 'crosshair', text: 'text', hand: 'grab', comment: 'crosshair' };
 
@@ -122,13 +124,57 @@ function EditorShell({ view }: { view: TabView }) {
     [workspace, doc],
   );
 
+  const canvasMiddle = useCallback(() => {
+    const box = canvasRef.current?.getBoundingClientRect();
+    return { x: (box?.width ?? 0) / 2, y: (box?.height ?? 0) / 2 };
+  }, []);
+
+  // Zoom commands glide to their view instead of jumping. A pan or zoom by the user mid-way wins at once.
+  const glide = useRef<{ frame: number; to: Viewport } | null>(null);
+  const glideTo = useCallback(
+    (next: (base: Viewport) => Viewport) => {
+      const current = glide.current;
+      if (current) cancelAnimationFrame(current.frame);
+      glide.current = null;
+      const from = viewport.get();
+      // Repeated presses step on from where the last glide is heading, not from a frame in between.
+      const to = next(current ? current.to : from);
+      if (typeof requestAnimationFrame !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        viewport.set(to);
+        return;
+      }
+      const mid = canvasMiddle();
+      const start = performance.now();
+      let shown = from;
+      const step = (now: number) => {
+        if (viewport.get() !== shown) {
+          glide.current = null;
+          return;
+        }
+        const t = Math.min(1, (now - start) / GLIDE_MS);
+        shown = blendViewport(from, to, 1 - (1 - t) ** 4, mid);
+        viewport.set(shown);
+        if (t < 1 && glide.current) glide.current.frame = requestAnimationFrame(step);
+        else glide.current = null;
+      };
+      glide.current = { frame: requestAnimationFrame(step), to };
+    },
+    [viewport, canvasMiddle],
+  );
+  useEffect(
+    () => () => {
+      if (glide.current) cancelAnimationFrame(glide.current.frame);
+    },
+    [],
+  );
+
   const zoomToFit = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ids = selection.get().length ? selection.get() : doc.requireNode(rootId).children;
     const box = unionRects(ids.map((id) => measureNode(canvas, id, viewport.get())).filter((r): r is Rect => r !== null));
-    if (box) viewport.set(fitRect(box, canvas.getBoundingClientRect()));
-  }, [doc, rootId, selection.get, viewport]);
+    if (box) glideTo(() => fitRect(box, canvas.getBoundingClientRect()));
+  }, [doc, rootId, selection.get, viewport, glideTo]);
 
   const startTextEdit = useCallback(
     (id: string) => {
@@ -165,11 +211,6 @@ function EditorShell({ view }: { view: TabView }) {
     return screenToWorld(viewport.get(), { x: (box?.width ?? 0) / 2, y: (box?.height ?? 0) / 2 });
   }, [viewport]);
 
-  const canvasMiddle = useCallback(() => {
-    const box = canvasRef.current?.getBoundingClientRect();
-    return { x: (box?.width ?? 0) / 2, y: (box?.height ?? 0) / 2 };
-  }, []);
-
   const ctx: CommandContext = useMemo(
     () => ({
       doc,
@@ -181,15 +222,15 @@ function EditorShell({ view }: { view: TabView }) {
       setTool,
       zoomToFit,
       // Both keep the centre of the canvas where it is.
-      zoomTo: (zoom) => viewport.set((v) => zoomAt(v, canvasMiddle(), zoom / v.zoom)),
-      zoomStep: (direction) => viewport.set((v) => zoomAt(v, canvasMiddle(), stepZoom(v.zoom, direction) / v.zoom)),
+      zoomTo: (zoom) => glideTo((v) => zoomAt(v, canvasMiddle(), zoom / v.zoom)),
+      zoomStep: (direction) => glideTo((v) => zoomAt(v, canvasMiddle(), stepZoom(v.zoom, direction) / v.zoom)),
       startRename: setRenamingId,
       collapseLayers: () => setCollapseSignal((n) => n + 1),
       notify: setToast,
       viewportCenter,
       setThumbnail,
     }),
-    [doc, actor, undo, rootId, selection.get, selection.set, zoomToFit, viewport, viewportCenter, canvasMiddle, setThumbnail],
+    [doc, actor, undo, rootId, selection.get, selection.set, zoomToFit, glideTo, viewportCenter, canvasMiddle, setThumbnail],
   );
 
   useEffect(() => {

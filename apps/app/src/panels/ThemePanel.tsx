@@ -8,6 +8,7 @@ import { useTokenUsage } from './tokenUsage';
 import { contrast, hexLabel } from './color';
 import { SelectionColors } from './SelectionColors';
 import { useSubtreeTheme, type SubtreeTheme } from './selectionTheme';
+import { SegmentThumb } from '../ui/SegmentThumb';
 
 const GROUP_LABELS: Record<TokenType, string> = {
   color: 'Colors',
@@ -76,6 +77,7 @@ export const ThemePanel = memo(function ThemePanel({ pageRootId = '' }: { pageRo
         </label>
         <div className="theme-tools-row">
           <div className="segmented is-small" role="radiogroup" aria-label="Show tokens">
+            <SegmentThumb />
             {(['all', 'used'] as const).map((f) => (
               <button key={f} role="radio" aria-checked={filter === f} className={`segment ${filter === f ? 'is-active' : ''}`} onClick={() => setFilter(f)}>
                 {f === 'all' ? `All ${tokens.length}` : `In use ${usedCount}`}
