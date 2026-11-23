@@ -36,8 +36,12 @@ jobs:
             os: windows-latest
           - name: macOS Apple silicon
             os: macos-latest
+          # GitHub retired the Intel macOS runners (macos-13), so the Intel build
+          # is cross-compiled on Apple silicon.
           - name: macOS Intel
-            os: macos-13
+            os: macos-latest
+            target: x86_64-apple-darwin
+            bun-target: bun-darwin-x64
           - name: Linux x64
             os: ubuntu-22.04
     runs-on: ${{ matrix.os }}
@@ -59,14 +63,24 @@ jobs:
           cache: pnpm
       - uses: oven-sh/setup-bun@v2
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: apps/app/src-tauri
+          key: ${{ matrix.target }}
 
       - run: pnpm install --frozen-lockfile
 
-      # The `markup` CLI ships inside the app as a sidecar, compiled for this runner.
-      - run: pnpm --filter @markup/mcp compile
+      # The `markup` CLI ships inside the app as a sidecar, compiled for this runner...
+      - if: ${{ !matrix.target }}
+        run: pnpm --filter @markup/mcp compile
+      # ...or, when cross-compiling, for the target, named the way Tauri expects.
+      - if: ${{ matrix.target }}
+        working-directory: packages/mcp
+        run: |
+          mkdir -p ../../apps/app/src-tauri/binaries
+          bun build src/cli.ts --compile --target=${{ matrix.bun-target }} --outfile ../../apps/app/src-tauri/binaries/markup-${{ matrix.target }}
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -74,6 +88,7 @@ jobs:
         with:
           projectPath: apps/app
           tauriScript: pnpm exec tauri
+          args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
           tagName: ${{ env.TAG }}
           releaseName: Markup ${{ env.TAG }}
           releaseBody: |
