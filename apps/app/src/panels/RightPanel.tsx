@@ -5,6 +5,7 @@ import { Inspector } from './Inspector';
 import { ThemePanel } from './ThemePanel';
 import { CommentsPanel, type CommentsPanelProps } from '../comments/CommentsPanel';
 import { useThreads } from '../comments/hooks';
+import { SegmentThumb } from '../ui/SegmentThumb';
 
 type Tab = 'design' | 'theme' | 'comments' | 'history';
 
@@ -22,6 +23,7 @@ export const RightPanel = memo(function RightPanel({ comments, resizer, pageRoot
       {resizer}
       <div className="panel-tabs" role="tablist">
         <div className="segmented">
+          <SegmentThumb />
           <button {...tabProps('design')} className={`segment ${tab === 'design' ? 'is-active' : ''}`}>
             Design
           </button>

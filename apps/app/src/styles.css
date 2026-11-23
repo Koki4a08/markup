@@ -12,17 +12,17 @@
   --design-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --design-text: #18181b;
 
-  --ui-font: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono-font: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
+  --ui-font: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono-font: 'Geist Mono Variable', ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
 
-  /* Grounds, darkest to lightest */
-  --chrome: #0f0f10;
-  --panel: #161618;
-  --popover: #1c1c1f;
-  --raised: #222225;
-  --raised-hover: #2a2a2e;
-  --raised-active: #313136;
-  --canvas: #232326;
+  /* Grounds, darkest to lightest: neutral graphite, lifted off pure black so panels read as surfaces. */
+  --chrome: #141416;
+  --panel: #1b1b1e;
+  --popover: #222225;
+  --raised: #28282c;
+  --raised-hover: #2f2f34;
+  --raised-active: #37373c;
+  --canvas: #2a2a2e;
 
   /* Lines */
   --border: rgb(var(--ink) / 0.07);
@@ -66,14 +66,19 @@
   --r: 6px;
   --r-lg: 10px;
 
-  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -6px rgba(0, 0, 0, 0.6);
-  --shadow-artboard: 0 1px 2px rgba(0, 0, 0, 0.28), 0 10px 30px -8px rgba(0, 0, 0, 0.55);
+  --shadow-pop: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgba(0, 0, 0, 0.28), 0 16px 40px -8px rgba(0, 0, 0, 0.55);
+  --shadow-artboard: 0 1px 2px rgba(0, 0, 0, 0.28), 0 10px 30px -8px rgba(0, 0, 0, 0.5);
+  /* Motion: one curve for things arriving, one for state changes, three durations. */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-slow: 260ms;
 
   /* Theme switch (Settings → Appearance): the overlay ink, deeper grounds and the UI's colour scheme. */
   --ink: 255 255 255;
-  --ground: #121214;
-  --tooltip-bg: #232327;
+  --ground: #18181a;
+  --tooltip-bg: #2a2a2e;
   --ui-scheme: dark;
   /* Strongest text: selected rows and the active tool. */
   --text-strong: #ffffff;
@@ -106,7 +111,7 @@
   --success-soft: rgba(5, 150, 105, 0.1);
   --danger: #dc2626;
   --danger-soft: rgba(220, 38, 38, 0.08);
-  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.06), 0 12px 32px -8px rgba(0, 0, 0, 0.2);
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.06), 0 16px 40px -10px rgba(0, 0, 0, 0.2);
   --shadow-artboard: 0 1px 2px rgba(0, 0, 0, 0.08), 0 8px 24px -8px rgba(0, 0, 0, 0.2);
   --ui-scheme: light;
   --text-strong: #0b0b0d;
@@ -156,8 +161,8 @@ body {
   font-size: 12px;
   line-height: 1.45;
   color: var(--text);
-  font-feature-settings: 'cv11', 'ss03';
-  letter-spacing: 0.002em;
+  letter-spacing: 0;
+  text-rendering: optimizeLegibility;
   color-scheme: var(--ui-scheme);
 }
 
@@ -326,7 +331,8 @@ html.is-resizing-panel * {
   line-height: 1.35;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 90ms ease-out, translate 90ms ease-out;
+  scale: 0.96;
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur) var(--ease-out), scale var(--dur) var(--ease-out);
 }
 
 .tooltip.is-bottom {
@@ -345,6 +351,7 @@ html.is-resizing-panel * {
 .tooltip.is-shown {
   opacity: 1;
   translate: 0 0;
+  scale: 1;
 }
 
 .tooltip-key {
@@ -595,7 +602,7 @@ html.is-resizing-panel * {
   background: var(--popover);
   box-shadow: var(--shadow-pop);
   color: var(--text);
-  animation: pop-in 140ms var(--ease-out);
+  animation: pop-in var(--dur) var(--ease-out);
 }
 
 .settings-head {
@@ -671,9 +678,9 @@ html.is-resizing-panel * {
   height: 54px;
   overflow: hidden;
   border-radius: 5px;
-  --p-chrome: #0f0f10;
-  --p-panel: #161618;
-  --p-canvas: #232326;
+  --p-chrome: #141416;
+  --p-panel: #1b1b1e;
+  --p-canvas: #2a2a2e;
   box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.08);
 }
 
@@ -708,15 +715,15 @@ html.is-resizing-panel * {
 
 /* System: half light, half dark. */
 .theme-preview.is-system .theme-preview-bar {
-  background: linear-gradient(135deg, #ebebed 50%, #0f0f10 50%);
+  background: linear-gradient(135deg, #ebebed 50%, #141416 50%);
 }
 
 .theme-preview.is-system .theme-preview-panel {
-  background: linear-gradient(135deg, #ffffff 50%, #161618 50%);
+  background: linear-gradient(135deg, #ffffff 50%, #1b1b1e 50%);
 }
 
 .theme-preview.is-system .theme-preview-canvas {
-  background: linear-gradient(135deg, #e4e4e7 50%, #232326 50%);
+  background: linear-gradient(135deg, #e4e4e7 50%, #2a2a2e 50%);
 }
 
 /* ───────────────────────── Editor: top bar ───────────────────────── */
@@ -1229,7 +1236,7 @@ html.is-dragging-layer * {
   gap: 6px;
   padding: 40px 24px;
   text-align: center;
-  animation: fade-in 200ms var(--ease-out);
+  animation: rise-in var(--dur-slow) var(--ease-out);
 }
 
 .panel-empty .empty-hint {
@@ -1662,6 +1669,20 @@ html.is-dragging-layer * {
   }
 }
 
+/* Content arriving in place: rises a few pixels out of a soft blur. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+    filter: blur(3px);
+  }
+}
+
+/* Switching the right panel's tab: the new panel's content settles in. */
+.panel-body > * {
+  animation: rise-in var(--dur-slow) var(--ease-out) backwards;
+}
+
 /* Segmented control: tabs, filters, icon groups */
 .segmented {
   display: flex;
@@ -1700,6 +1721,31 @@ html.is-dragging-layer * {
   background: var(--raised-active);
   color: var(--text);
   box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.06), 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* Sliding highlight (ui/SegmentThumb.tsx): it carries the active look and glides between segments. */
+.segmented {
+  position: relative;
+  isolation: isolate;
+}
+.segment-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  z-index: -1;
+  border-radius: 6px;
+  background: var(--raised-active);
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.06), 0 1px 2px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+}
+.segment-thumb.is-ready {
+  transition: transform var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out), opacity var(--dur) var(--ease-out);
+}
+.segmented:has(> .segment-thumb) > .segment.is-active {
+  background: transparent;
+  box-shadow: none;
 }
 
 .segment:focus-visible {
@@ -2364,6 +2410,18 @@ button.field-input:hover {
   height: 14px;
 }
 
+/* A quiet action at the right of a section heading. */
+.section-head .section-text-action {
+  height: 22px;
+  margin: 0 -8px 0 0;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.section-head .section-text-action:hover {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+
 .inspector .empty-hint {
   margin: 0;
 }
@@ -2627,7 +2685,7 @@ button.field-input:hover {
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: var(--popover);
-  animation: fade-in 160ms var(--ease-out);
+  animation: rise-in var(--dur) var(--ease-out);
 }
 
 .token-new > input:first-child,
@@ -2783,9 +2841,9 @@ button.field-input:hover {
 
 .history-row {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 3px 8px;
-  padding: 12px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  padding: 11px 16px 12px;
   border-bottom: 1px solid var(--border);
   transition: background-color 120ms ease-out;
 }
@@ -2795,23 +2853,36 @@ button.field-input:hover {
 }
 
 .history-meta {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
   color: var(--text-3);
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .history-seq {
+  order: 3;
+  margin-left: auto;
   font-family: var(--mono-font);
   font-size: 10.5px;
+  opacity: 0.8;
+}
+
+.history-time {
+  order: 2;
 }
 
 .history-actor {
+  order: 1;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-2);
   font-weight: 500;
 }
@@ -2822,6 +2893,7 @@ button.field-input:hover {
 
 .history-row.is-agent .history-actor::before {
   content: '';
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -2831,19 +2903,23 @@ button.field-input:hover {
 .history-summary {
   grid-column: 1;
   color: var(--text);
+  line-height: 1.45;
 }
 
 .history-row .text-button,
 .history-state {
   grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: center;
-  margin: 0;
+  grid-row: 2;
+  align-self: start;
+  margin: -2px 0 0;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .history-row .text-button {
     opacity: 0;
+  }
+  .history-row .text-button {
+    transition: opacity var(--dur-fast) var(--ease-out);
   }
   .history-row:hover .text-button,
   .history-row:has(:focus-visible) .text-button {
@@ -3065,6 +3141,13 @@ button.field-input:hover {
   list-style: none;
 }
 
+/* Cards arrive in a short cascade each time the dashboard opens. */
+.file-grid > li,
+.file-list > li {
+  animation: rise-in var(--dur-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 22ms);
+}
+
 .file-card {
   position: relative;
   display: flex;
@@ -3073,11 +3156,20 @@ button.field-input:hover {
   border-radius: var(--r-lg);
   background: var(--panel);
   overflow: hidden;
-  transition: border-color 80ms ease-out;
+  transition: border-color var(--dur) var(--ease-out), translate var(--dur-slow) var(--ease-out), box-shadow var(--dur-slow) var(--ease-out);
 }
 
 .file-card:hover {
   border-color: var(--border-strong);
+  translate: 0 -2px;
+  box-shadow: 0 14px 30px -18px rgba(0, 0, 0, 0.55);
+}
+
+.file-thumb img {
+  transition: scale var(--dur-slow) var(--ease-out);
+}
+.file-card:hover .file-thumb img {
+  scale: 1.02;
 }
 
 .file-card:has(:focus-visible) {
@@ -3183,7 +3275,7 @@ button.field-input:hover {
   margin: 0;
   padding: 0 24px 32px;
   list-style: none;
-  animation: fade-in 180ms var(--ease-out);
+  animation: rise-in var(--dur-slow) var(--ease-out);
 }
 
 .file-list .file-card {
@@ -3251,13 +3343,14 @@ button.field-input:hover {
   border-radius: 8px;
   background: var(--popover);
   box-shadow: var(--shadow-pop);
-  animation: pop-in 120ms var(--ease-out);
+  animation: pop-in var(--dur) var(--ease-out);
 }
 
 @keyframes pop-in {
   from {
     opacity: 0;
-    transform: translateY(-2px) scale(0.98);
+    transform: translateY(-4px) scale(0.97);
+    filter: blur(2px);
   }
 }
 
@@ -3329,13 +3422,14 @@ button.field-input:hover {
   box-shadow: var(--shadow-pop);
   color: var(--text);
   font-size: 12px;
-  animation: toast-in 200ms var(--ease-out);
+  animation: toast-in var(--dur-slow) var(--ease-out);
 }
 
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 8px);
+    transform: translate(-50%, 10px) scale(0.97);
+    filter: blur(3px);
   }
 }
 
@@ -3423,7 +3517,7 @@ button.field-input:hover {
   pointer-events: auto;
   cursor: default;
   user-select: text;
-  animation: pop-in 140ms var(--ease-out);
+  animation: pop-in var(--dur) var(--ease-out);
 }
 
 .comment-popover-head,
@@ -3676,7 +3770,7 @@ button.field-input:hover {
   border-radius: var(--r-lg);
   background: var(--popover);
   box-shadow: var(--shadow-pop);
-  animation: pop-in 140ms var(--ease-out);
+  animation: pop-in var(--dur) var(--ease-out);
 }
 
 .mcp-panel-head {
@@ -3784,6 +3878,21 @@ button.field-input:hover {
   color: var(--danger);
   background: var(--danger-soft);
   border-color: rgba(248, 113, 113, 0.3);
+}
+
+/* ───────────────────────── Press feedback ───────────────────────── */
+
+/* Buttons give a little under the pointer, so every click feels answered. */
+.app-shell :is(.primary-button, .text-button, .topbar-button, .icon-button, .icon-tab, .segment, .zoom, .settings-button, .theme-option, .tool-button) {
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+}
+.app-shell :is(.primary-button, .text-button, .topbar-button, .icon-button, .icon-tab, .segment, .zoom, .settings-button, .theme-option, .tool-button):not(:disabled):active {
+  scale: 0.96;
+}
+
+/* A layer group that opens fades its rows in. */
+.layer-tree ul[role='group'] {
+  animation: fade-in var(--dur) var(--ease-out);
 }
 
 /* ───────────────────────── Motion preferences ───────────────────────── */

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TickStore, ValueStore } from '../src/canvas/store';
-import { MAX_ZOOM, MIN_ZOOM, screenToWorld, worldToScreen, zoomAt } from '../src/canvas/viewport';
+import { blendViewport, MAX_ZOOM, MIN_ZOOM, screenToWorld, worldToScreen, zoomAt } from '../src/canvas/viewport';
 
 describe('viewport', () => {
   const v = { x: 100, y: 50, zoom: 2 };
@@ -67,5 +67,26 @@ describe('canvas stores', () => {
       raf.mockRestore();
       caf.mockRestore();
     }
+  });
+});
+
+describe('blendViewport', () => {
+  const from = { x: 10, y: 20, zoom: 0.5 };
+  const to = { x: -300, y: 140, zoom: 2 };
+  const mid = { x: 400, y: 300 };
+
+  it('starts at the first view and ends exactly at the second', () => {
+    expect(blendViewport(from, to, 0, mid)).toBe(from);
+    expect(blendViewport(from, to, 1, mid)).toBe(to);
+  });
+
+  it('changes zoom by equal ratios and moves the centred world point in a straight line', () => {
+    const half = blendViewport(from, to, 0.5, mid);
+    expect(half.zoom).toBeCloseTo(1);
+    const a = screenToWorld(from, mid);
+    const b = screenToWorld(to, mid);
+    const c = screenToWorld(half, mid);
+    expect(c.x).toBeCloseTo((a.x + b.x) / 2);
+    expect(c.y).toBeCloseTo((a.y + b.y) / 2);
   });
 });

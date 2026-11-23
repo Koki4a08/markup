@@ -145,7 +145,7 @@ export function setWindowTitle(title: string): void {
 }
 
 /** Chrome colour behind the webview, matching `--chrome` in styles.css, shown while the window resizes. */
-const WINDOW_BACKGROUND = { dark: '#0f0f10', light: '#ebebed' } as const;
+const WINDOW_BACKGROUND = { dark: '#141416', light: '#ebebed' } as const;
 
 /**
  * Keeps the native window (macOS traffic lights and vibrancy, the colour scheme the webview reports,
