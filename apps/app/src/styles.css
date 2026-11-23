@@ -1121,6 +1121,7 @@ html.is-resizing-panel * {
     transition: opacity 120ms ease-out;
   }
   .layer-row:hover .row-actions,
+  .page-row:hover .row-actions,
   .row-actions:has(:focus-visible),
   .row-actions.has-on {
     opacity: 1;
@@ -1130,6 +1131,7 @@ html.is-resizing-panel * {
     opacity: 0;
   }
   .layer-row:hover .row-actions .icon-button,
+  .page-row:hover .row-actions .icon-button,
   .row-actions .icon-button:focus-visible {
     opacity: 1;
   }
@@ -1285,7 +1287,7 @@ html.is-dragging-layer * {
   user-select: none;
 }
 
-/* Shadows and agent rings drawn behind the artboards, outside the design DOM. */
+/* Shadows drawn behind the artboards, outside the design DOM. */
 .canvas-backdrop {
   position: absolute;
   inset: 0;
@@ -1297,22 +1299,6 @@ html.is-dragging-layer * {
   top: 0;
   left: 0;
   box-shadow: var(--shadow-artboard);
-}
-
-.artboard-backdrop.is-working {
-  outline: 2px solid var(--agent);
-  outline-offset: 3px;
-  animation: agent-ring 2.4s ease-in-out infinite;
-}
-
-@keyframes agent-ring {
-  0%,
-  100% {
-    box-shadow: var(--shadow-artboard), 0 0 0 5px rgba(139, 92, 246, 0);
-  }
-  50% {
-    box-shadow: var(--shadow-artboard), 0 0 0 9px rgba(139, 92, 246, 0.16);
-  }
 }
 
 .canvas-world {
@@ -3371,6 +3357,11 @@ button.field-input:hover {
 .context-menu .row:hover .row-icon,
 .context-menu .row:focus-visible .row-icon {
   color: #fff;
+}
+
+.context-menu .row:disabled {
+  background: transparent;
+  color: var(--text-3);
 }
 
 .context-menu .empty-hint {
