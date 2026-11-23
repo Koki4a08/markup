@@ -26,7 +26,10 @@ pub fn run() {
       tauri_plugin_window_state::Builder::default()
         .with_state_flags(tauri_plugin_window_state::StateFlags::all() - tauri_plugin_window_state::StateFlags::VISIBLE)
         .build(),
-    );
+    )
+    // The frontend polls for a new release and restarts into it (see src/desktop/updater.ts).
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_process::init());
 
   // macOS: a menu bar of the app's own, so Cmd+W closes a tab rather than the only window.
   #[cfg(target_os = "macos")]

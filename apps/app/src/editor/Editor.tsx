@@ -25,6 +25,7 @@ import { sanitizeText } from '../canvas/NodeView';
 import { pasteIntoDoc } from '../clipboard/paste';
 import { useTabs, useWorkspace } from '../workspace/WorkspaceProvider';
 import { PanelResizer, usePanelWidths } from '../ui/PanelResizer';
+import { UpdateNotice } from '../desktop/UpdateNotice';
 import { keepEditingAcrossWindowBlur } from '../ui/windowFocus';
 
 /** Viewport and selection of one tab, kept by the workspace across tab switches. */
@@ -416,6 +417,7 @@ function EditorShell({ view }: { view: TabView }) {
           collapseSignal={collapseSignal}
           onContextMenu={setCopyMenu}
           resizer={leftResizer}
+          onNotify={setToast}
         />
         <div className="tool-rail" role="toolbar" aria-label="Tools" aria-orientation="vertical">
           {RAIL_TOOLS.map((t) => (
@@ -473,6 +475,7 @@ function EditorShell({ view }: { view: TabView }) {
           resizer={rightResizer}
           pageRootId={rootId}
         />
+        <UpdateNotice />
       </main>
       {copyMenu && <CopyMenu at={copyMenu} onClose={() => setCopyMenu(null)} onPick={(command) => runCommand(command, ctx)} />}
       {toast && (

@@ -20,6 +20,8 @@
     "core:window:allow-set-background-color",
     "dialog:allow-save",
     "fs:allow-write-file",
+    "updater:default",
+    "process:allow-restart",
     {
       "identifier": "shell:allow-execute",
       "allow": [

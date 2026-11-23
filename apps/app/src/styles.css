@@ -19,6 +19,10 @@
   --chrome: #141416;
   --panel: #1b1b1e;
   --popover: #222225;
+  /* Right-click menus: translucent vibrancy, like a native macOS menu. */
+  --menu-bg: rgb(34 34 38 / 0.72);
+  --menu-border: rgb(255 255 255 / 0.1);
+  --menu-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.6), 0 10px 32px -4px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.25);
   --raised: #28282c;
   --raised-hover: #2f2f34;
   --raised-active: #37373c;
@@ -92,6 +96,9 @@
   --chrome: #ebebed;
   --panel: #ffffff;
   --popover: #ffffff;
+  --menu-bg: rgb(246 246 248 / 0.78);
+  --menu-border: rgb(0 0 0 / 0.08);
+  --menu-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.7), 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 10px 32px -4px rgb(0 0 0 / 0.18), 0 2px 6px rgb(0 0 0 / 0.06);
   --raised: #f3f3f5;
   --raised-hover: #ebebee;
   --raised-active: #e3e3e7;
@@ -239,6 +246,12 @@ body {
 .canvas-world [data-node-id] a,
 [data-markup-export-host] [data-node-id] a {
   color: inherit;
+}
+/* A vector layer's <svg> is its only child; inline it would sit on a text baseline and the line's descender
+   space would make the layer taller than the drawing, pushing the icon off centre in its parent. */
+.canvas-world [data-node-id] > svg,
+[data-markup-export-host] [data-node-id] > svg {
+  display: block;
 }
 .canvas-world [data-svg-fit] > svg,
 [data-markup-export-host] [data-svg-fit] > svg {
@@ -3254,6 +3267,124 @@ button.field-input:hover {
   color: var(--text-3);
 }
 
+/* Grid cards: name and date on top, a 16:9 preview inset below, the whole card opens the file. */
+.file-grid {
+  gap: 24px;
+}
+
+.file-grid .file-card {
+  padding: 4px;
+  border: 0;
+  background: var(--raised);
+  outline: 1px solid rgb(var(--ink) / 0.06);
+  outline-offset: -1px;
+  isolation: isolate;
+  transition: background-color var(--dur) var(--ease-out), outline-color var(--dur) var(--ease-out);
+}
+
+.file-grid .file-card:hover {
+  translate: none;
+  box-shadow: none;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--raised), rgb(var(--ink)) 3%);
+  outline-color: rgb(var(--ink) / 0.1);
+}
+
+.file-grid .file-card:has(:focus-visible) {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 0;
+}
+
+.file-grid .file-card-meta {
+  position: relative;
+  z-index: 2;
+  order: -1;
+  gap: 0;
+  padding: 6px 36px 8px 8px;
+  line-height: 18px;
+  pointer-events: none;
+}
+
+.file-grid .file-card-name {
+  min-height: 22px;
+  line-height: 22px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.file-grid .file-card-sub {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.file-grid .file-card-meta .rename-input {
+  height: 22px;
+  pointer-events: auto;
+}
+
+.file-grid .file-card-open {
+  position: static;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  overflow: hidden;
+  cursor: default;
+}
+
+/* Stretch the open button over the whole card so a click anywhere opens it. */
+.file-grid .file-card-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.file-grid .file-card-open:focus-visible {
+  outline: none;
+}
+
+.file-grid .file-thumb {
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border-radius: 4px;
+  background: rgb(var(--ink) / 0.08);
+}
+
+.file-grid .file-card.is-folder .file-thumb {
+  background: rgb(var(--ink) / 0.05);
+}
+
+.file-grid .file-thumb img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.file-grid .file-card-more {
+  top: 9px;
+  right: 8px;
+  bottom: auto;
+  z-index: 3;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .file-grid .file-card-more {
+    opacity: 0;
+  }
+  .file-grid .file-card:hover .file-card-more,
+  .file-grid .file-card:focus-within .file-card-more,
+  .file-grid .file-card-more[aria-expanded='true'] {
+    opacity: 1;
+  }
+}
+
 /* List layout reuses the card markup as rows. */
 .file-list {
   display: grid;
@@ -3323,12 +3454,14 @@ button.field-input:hover {
   z-index: 10;
   min-width: 200px;
   max-height: 320px;
-  padding: 4px;
+  padding: 5px;
   overflow-y: auto;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--popover);
-  box-shadow: var(--shadow-pop);
+  border: 1px solid var(--menu-border);
+  border-radius: 10px;
+  background: var(--menu-bg);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: var(--menu-shadow);
   animation: pop-in var(--dur) var(--ease-out);
 }
 
@@ -3421,6 +3554,265 @@ button.field-input:hover {
     opacity: 0;
     transform: translate(-50%, 10px) scale(0.97);
     filter: blur(3px);
+  }
+}
+
+/* ───────────────────────── Update notice ───────────────────────── */
+
+/* Bottom right of the canvas column in the editor, of the window on the dashboard. */
+.update-notice {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--popover);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 17px;
+  animation: update-notice-in var(--dur-slow) var(--ease-out);
+}
+
+.workspace {
+  position: relative;
+}
+
+.workspace > .update-notice {
+  position: absolute;
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.update-notice-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.update-notice-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--focus-soft);
+  color: var(--accent-text);
+}
+
+.update-notice-icon.is-success {
+  background: var(--success-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 22%, transparent);
+  color: var(--success);
+}
+
+.update-notice-icon.is-danger {
+  background: var(--danger-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 22%, transparent);
+  color: var(--danger);
+}
+
+.update-notice-icon.is-spinning svg {
+  animation: update-notice-spin 900ms linear infinite;
+}
+
+.update-notice-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 1px;
+  color: var(--text-2);
+}
+
+.update-notice-text strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.update-notice-text .is-numeric,
+.update-notice-pct {
+  font-variant-numeric: tabular-nums;
+}
+
+.update-notice-pct {
+  padding-top: 1px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.update-notice-close {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.update-notice-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-left: 44px;
+}
+
+.update-notice-actions.is-end {
+  justify-content: flex-end;
+}
+
+.update-notice-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.update-notice-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 500;
+  cursor: default;
+  border-radius: var(--r-sm);
+  transition: color var(--dur-fast) ease-out;
+}
+
+.update-notice-link:hover {
+  color: var(--text);
+}
+
+.update-notice-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: default;
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.update-notice-button:hover {
+  background: var(--raised-hover);
+}
+
+.update-notice-button:active {
+  background: var(--raised-active);
+}
+
+.update-notice-button.is-primary {
+  padding: 0 12px;
+  border-color: transparent;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.update-notice-button.is-primary:hover {
+  background: var(--accent-fill-hover);
+}
+
+.update-notice-button.is-primary:active {
+  background: var(--accent-fill-active);
+}
+
+.update-notice :is(button):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* "What's new" after an update: the version's top changes as a short list. */
+.update-notice-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0 0 0 44px;
+  list-style: none;
+  color: var(--text-2);
+}
+
+.update-notice-changes li {
+  position: relative;
+  padding-left: 12px;
+}
+
+.update-notice-changes li::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.update-notice-changes li.is-new::before {
+  background: var(--accent);
+}
+
+.update-notice-progress {
+  height: 4px;
+  margin-left: 44px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--hover-strong);
+}
+
+.update-notice-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width var(--dur) var(--ease-out);
+}
+
+.update-notice-progress span.is-indeterminate {
+  width: 30%;
+  animation: update-notice-sweep 1.2s var(--ease-in-out) infinite;
+}
+
+@keyframes update-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+    filter: blur(3px);
+  }
+}
+
+@keyframes update-notice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes update-notice-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-notice,
+  .update-notice-icon.is-spinning svg,
+  .update-notice-progress span.is-indeterminate {
+    animation: none;
   }
 }
 

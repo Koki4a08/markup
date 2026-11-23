@@ -3,6 +3,9 @@ import { ActorUndo, type Actor } from '@markup/doc';
 import { Editor } from './editor/Editor';
 import { preventAppZoom } from './canvas/navigation';
 import { revealWindow, setWindowTitle } from './desktop/native';
+import { UpdateNotice } from './desktop/UpdateNotice';
+import { startUpdateChecks } from './desktop/updater';
+import { startWhatsNew } from './desktop/whatsNew';
 import { tabShortcut, tabTarget, type TabCommand } from './desktop/tabShortcuts';
 import { inTauri } from './export/clipboard';
 import { TooltipLayer } from './ui/Tooltip';
@@ -52,7 +55,12 @@ export function App() {
   // The desktop window opens hidden; it appears once there is something real to show.
   const ready = !!workspace || !!error;
   useEffect(() => {
-    if (ready) revealWindow();
+    if (!ready) return;
+    revealWindow();
+    // Desktop only: look for a new release now and every 30 seconds after.
+    startUpdateChecks();
+    // Desktop only: after an update, say what is new in the version that just opened.
+    startWhatsNew();
   }, [ready]);
 
   if (error) return <div className="boot-message" role="alert">{error}</div>;
@@ -162,7 +170,10 @@ export function Shell() {
       <TooltipLayer />
       <FileTabs dashboard={dashboard || !doc} onDashboard={toggleDashboard} onTab={() => setDashboard(false)} shortcut={shortcut} />
       {dashboard || !doc ? (
-        <Dashboard onOpened={() => setDashboard(false)} />
+        <>
+          <Dashboard onOpened={() => setDashboard(false)} />
+          <UpdateNotice />
+        </>
       ) : (
         <DocProvider key={doc.fileId} doc={doc} actor={LOCAL_USER} undo={undo}>
           <Editor />
