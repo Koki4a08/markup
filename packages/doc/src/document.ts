@@ -81,6 +81,10 @@ export class MarkupDoc {
     this.mutate(actor, summary ?? `Updated ${plural(updates.length, 'page')}`, () => pages.updatePages(this, updates));
   }
 
+  deletePage(actor: Actor, pageId: string, summary?: string): void {
+    this.mutate(actor, summary ?? 'Deleted 1 page', () => pages.deletePage(this, pageId));
+  }
+
   arrangePages(actor: Actor, order: ArrangeItem[], removeDividerIds?: string[], summary?: string): PageEntry[] {
     this.mutate(actor, summary ?? 'Arranged pages', () => pages.arrangePages(this, order, removeDividerIds));
     return this.pages();

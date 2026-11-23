@@ -2,7 +2,7 @@ import { MarkupError } from '@markup/doc';
 import { familyInfo } from '../fonts/fontLoader';
 import { listLocalFonts, localFontsGranted } from '../fonts/localFonts';
 
-export const LOCAL_FONTS_NOTE = 'not granted — the user can allow local fonts from the Text panel';
+export const LOCAL_FONTS_NOTE = 'not granted - the user can allow local fonts from the Text panel';
 
 /** get_font_family_info: which families exist locally or on Google Fonts, with their style groups. */
 export async function runFontTool(params: Record<string, unknown>) {

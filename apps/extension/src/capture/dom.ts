@@ -13,7 +13,7 @@ export const DIALECT_ATTR = 'data-markup-dialect';
 export const FONTS_ATTR = 'data-markup-fonts';
 /** On a snapshot root: the @keyframes its layers' animations use (stored in the file on paste). */
 export const KEYFRAMES_ATTR = 'data-markup-keyframes';
-export const TOO_LARGE = 'This page is too large to snapshot — pick a smaller element.';
+export const TOO_LARGE = 'This page is too large to snapshot - pick a smaller element.';
 
 /** Caps that keep a full-page capture from exhausting memory or the clipboard. */
 export interface CaptureLimits {
@@ -277,4 +277,20 @@ export function targetAsRoot(html: string, marks: string, name: string, decls: D
   const extra = escAttr(styleAttr(decls));
   if (extra) tag = tag.includes(' style="') ? tag.replace(' style="', ` style="${extra};`) : `${tag} style="${extra}"`;
   return `<div ${marks}${tag}>${defs}${html.slice(open[0].length)}`;
+}
+
+/**
+ * Capture targets with SVG parts (a <rect>, <path>, <g>) lifted to their outermost <svg>: those parts only render
+ * inside one, so the capture copies the whole drawing. Duplicates collapse to one target.
+ */
+export function captureTargets(els: Element[]): Element[] {
+  const out = new Set<Element>();
+  for (const el of els) {
+    let svg: Element = el;
+    if (el.namespaceURI === 'http://www.w3.org/2000/svg') {
+      for (let anc: Element | null = el; anc; anc = anc.parentElement) if (anc.localName === 'svg') svg = anc;
+    }
+    out.add(svg);
+  }
+  return [...out];
 }

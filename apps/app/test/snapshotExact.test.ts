@@ -7,7 +7,7 @@ import { fakeEnv } from '../../extension/test/fakeEnv';
 import { EXACT_FIXTURES, FIXTURES, type Fixture } from '../../extension/test/fixtures';
 
 const MARKER = '<!--markup:snapshot v1-->';
-const META = { title: 'Acme — Repo', url: 'https://acme.test/repo' };
+const META = { title: 'Acme - Repo', url: 'https://acme.test/repo' };
 const UNSAFE = /javascript:|expression\(|-moz-binding|behavior\s*:|@import|image-set\(|\\/i;
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
 

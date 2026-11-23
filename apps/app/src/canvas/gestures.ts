@@ -1,6 +1,6 @@
-import { useCallback, type RefObject } from 'react';
+import { useCallback, useRef, type RefObject } from 'react';
 import type { MarkupDoc, NodeSpec, Styles } from '@markup/doc';
-import { measureNode, parsePxValue, type Rect } from './geometry';
+import { measureNode, parsePxValue, unionRects, type Rect } from './geometry';
 import { flowDropTarget, freeformMove, hitPath, hitTest, inFlow, pageLayerStyles, pastWrappers, pickFromPath, resizeRect, JOIN_FLOW, type DropTarget, type Handle } from './interactions';
 import { FlowPreview } from './flowPreview';
 import type { Tool } from './tools';
@@ -102,8 +102,19 @@ export function useCanvasGestures(o: GestureOptions) {
     };
   };
 
+  // Chrome reports detail 0 on pointerdown (it counts clicks only on mouse events), so count them here.
+  const lastDown = useRef({ t: 0, x: 0, y: 0, n: 0 });
+  const clickCount = (e: React.PointerEvent): number => {
+    if (e.detail > 0) return e.detail;
+    const prev = lastDown.current;
+    const again = e.timeStamp - prev.t < 500 && Math.abs(e.clientX - prev.x) < 5 && Math.abs(e.clientY - prev.y) < 5;
+    lastDown.current = { t: e.timeStamp, x: e.clientX, y: e.clientY, n: again ? prev.n + 1 : 1 };
+    return lastDown.current.n;
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || !o.canvasRef.current) return;
+    const clicks = clickCount(e);
     const start = toWorld(e);
     if (o.tool === 'frame' || o.tool === 'rect') return drawBox(start, o.tool);
     if (o.tool === 'text') return placeText(start);
@@ -111,7 +122,7 @@ export function useCanvasGestures(o: GestureOptions) {
     const path = hitPath(doc, o.rootId, start, passRectOf());
     let hit = pickFromPath(doc, path, selection.get(), e.metaKey || e.ctrlKey);
     if (!hit) return selection.set([]);
-    if (e.detail === 2) {
+    if (clicks === 2) {
       if (doc.getNode(hit)?.type === 'text') return o.startTextEdit(hit);
       // Double-click a frame: step one level into it, to the child under the pointer (past lone wrappers).
       const next = path.indexOf(hit) + 1;
@@ -232,23 +243,37 @@ export function useCanvasGestures(o: GestureOptions) {
     );
   };
 
+  /**
+   * Resizes the selection from a handle. One layer takes the new box; several scale together inside their
+   * union box, each keeping its share of it (a flow child keeps its place and only changes size).
+   */
   const onHandleDown = (handle: Handle, e: React.PointerEvent) => {
-    const [id] = selection.get();
     const canvas = o.canvasRef.current;
-    if (!id || !canvas) return;
-    const startRect = rectOf(id);
-    const el = elOf(canvas, id);
-    if (!startRect || !el) return;
+    if (!canvas) return;
+    const items = selection
+      .get()
+      .map((id) => ({ id, rect: rectOf(id), el: elOf(canvas, id), ...parentInfo(doc, id) }))
+      .filter((it): it is typeof it & { rect: Rect; el: HTMLElement } => !!it.rect && !!it.el);
+    const startBox = unionRects(items.map((it) => it.rect));
+    if (!items.length || !startBox) return;
     const start = toWorld(e);
-    const { node, freeform } = parentInfo(doc, id);
-    let next = startRect;
+    let next = startBox;
+    // Each layer's rect inside the resized box, scaled from where it sat in the starting one.
+    const fit = (r: Rect): Rect => {
+      const sx = startBox.width ? next.width / startBox.width : 1;
+      const sy = startBox.height ? next.height / startBox.height : 1;
+      return { x: next.x + (r.x - startBox.x) * sx, y: next.y + (r.y - startBox.y) * sy, width: Math.max(1, r.width * sx), height: Math.max(1, r.height * sy) };
+    };
     // The inline values the preview overwrites, put back if the resize is aborted (a commit re-renders them).
-    const before = { width: el.style.width, height: el.style.height, left: el.style.left, top: el.style.top };
+    const before = items.map(({ el }) => ({ width: el.style.width, height: el.style.height, left: el.style.left, top: el.style.top }));
     // Panels and overlays hear about the live size once per frame, however fast pointer events arrive.
     let frame = 0;
     const publish = () => {
       frame = 0;
-      announceLive([id], { width: `${Math.round(next.width)}px`, height: `${Math.round(next.height)}px` });
+      for (const it of items) {
+        const r = fit(it.rect);
+        announceLive([it.id], { width: `${Math.round(r.width)}px`, height: `${Math.round(r.height)}px` });
+      }
       o.dragTick.bumpNow();
     };
     const stopPreview = () => {
@@ -259,12 +284,15 @@ export function useCanvasGestures(o: GestureOptions) {
     trackPointer(
       (ev) => {
         const p = toWorld(ev);
-        next = resizeRect(startRect, handle, p.x - start.x, p.y - start.y);
-        el.style.width = `${next.width}px`;
-        el.style.height = `${next.height}px`;
-        if (freeform) {
-          el.style.left = `${parsePxValue(node.styles.left) + next.x - startRect.x}px`;
-          el.style.top = `${parsePxValue(node.styles.top) + next.y - startRect.y}px`;
+        next = resizeRect(startBox, handle, p.x - start.x, p.y - start.y);
+        for (const it of items) {
+          const r = fit(it.rect);
+          it.el.style.width = `${r.width}px`;
+          it.el.style.height = `${r.height}px`;
+          if (it.freeform) {
+            it.el.style.left = `${parsePxValue(it.node.styles.left) + r.x - it.rect.x}px`;
+            it.el.style.top = `${parsePxValue(it.node.styles.top) + r.y - it.rect.y}px`;
+          }
         }
         if (frame) return;
         if (typeof requestAnimationFrame === 'function') frame = requestAnimationFrame(publish);
@@ -272,17 +300,21 @@ export function useCanvasGestures(o: GestureOptions) {
       },
       () => {
         stopPreview();
-        if (next === startRect) return;
-        const styles: Styles = { width: `${Math.round(next.width)}px`, height: `${Math.round(next.height)}px` };
-        if (freeform) {
-          styles.left = Math.round(parsePxValue(node.styles.left) + next.x - startRect.x);
-          styles.top = Math.round(parsePxValue(node.styles.top) + next.y - startRect.y);
-        }
-        doc.updateStyles(actor, [{ nodeIds: [id], styles }], `Resized "${node.name}"`);
+        if (next === startBox) return;
+        const updates = items.map((it) => {
+          const r = fit(it.rect);
+          const styles: Styles = { width: `${Math.round(r.width)}px`, height: `${Math.round(r.height)}px` };
+          if (it.freeform) {
+            styles.left = Math.round(parsePxValue(it.node.styles.left) + r.x - it.rect.x);
+            styles.top = Math.round(parsePxValue(it.node.styles.top) + r.y - it.rect.y);
+          }
+          return { nodeIds: [it.id], styles };
+        });
+        doc.updateStyles(actor, updates, items.length === 1 ? `Resized "${items[0]!.node.name}"` : `Resized ${items.length} nodes`);
       },
       () => {
         stopPreview();
-        Object.assign(el.style, before);
+        items.forEach((it, i) => Object.assign(it.el.style, before[i]));
         o.dragTick.bumpNow();
       },
     );

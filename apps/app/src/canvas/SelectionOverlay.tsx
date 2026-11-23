@@ -74,8 +74,7 @@ export function SelectionOverlay({ canvasRef, ids, viewport: viewportStore, drag
           return <div key={i} className="selection-item" style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.width * viewport.zoom, height: r.height * viewport.zoom }} />;
         })}
       <div className="selection-box" style={{ transform: `translate(${tl.x}px, ${tl.y}px)`, width: screen.width, height: screen.height }}>
-        {ids.length === 1 &&
-          onHandleDown &&
+        {onHandleDown &&
           HANDLES.map((h) => (
             <div
               key={h}

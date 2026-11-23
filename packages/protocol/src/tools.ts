@@ -211,7 +211,7 @@ export const tools = {
     { fileId, pageId: z.string().optional().describe('Only count activity on this page.') },
   ),
   set_comment_thread_status: tool(
-    'Set the workflow status of one comment thread to "resolved" or "open". Resolve a thread once its feedback has been fully addressed in the design — this is how you mark review comments as done. Reopen a resolved thread if more work turns out to be needed.',
+    'Set the workflow status of one comment thread to "resolved" or "open". Resolve a thread once its feedback has been fully addressed in the design - this is how you mark review comments as done. Reopen a resolved thread if more work turns out to be needed.',
     { fileId, commentThreadId: z.string().min(1), status: z.enum(['open', 'resolved']) },
   ),
   list_resources: tool(

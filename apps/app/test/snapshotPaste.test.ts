@@ -7,7 +7,7 @@ import { fakeEnv } from '../../extension/test/fakeEnv';
 import { fixture } from '../../extension/test/fixtures';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
-const META = { title: 'Acme — Home', url: 'https://acme.test/' };
+const META = { title: 'Acme - Home', url: 'https://acme.test/' };
 
 async function captured(name: string): Promise<string> {
   const f = fixture(name);

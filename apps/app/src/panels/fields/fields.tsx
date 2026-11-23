@@ -168,7 +168,7 @@ export function SelectField({
     <Label label={label} hideLabel={hideLabel} className={span === 2 ? 'is-wide' : ''}>
       {(id) => (
         <select id={id} className="field-input" value={value === MIXED || value === undefined ? '' : String(value)} onChange={(e) => onChange(e.target.value)}>
-          {(value === MIXED || value === undefined) && <option value="">{value === MIXED ? 'Mixed' : '—'}</option>}
+          {(value === MIXED || value === undefined) && <option value="">{value === MIXED ? 'Mixed' : '-'}</option>}
           {/* A stored value the list does not name still shows as itself, not as the first option. */}
           {value !== MIXED && value !== undefined && !options.some(([v]) => v === String(value)) && <option value={String(value)}>{String(value)}</option>}
           {options.map(([v, text]) => (
