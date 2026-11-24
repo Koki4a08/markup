@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { configPath, defaultServerCommand, findExecutable, install, upsertCodexTable, type InstallEnv, type RunResult } from '../src/install';
+import { configPath, defaultServerCommand, detectAgent, entryProblem, findExecutable, install, readCodexEntry, readConfig, removeCodexTable, uninstall, upsertCodexTable, type InstallEnv, type RunResult } from '../src/install';
 import { AGENTS, snippets } from '../src/snippets';
 
 const entry = { command: 'C:\\Program Files\\Markup\\markup.exe', args: ['mcp'] };
@@ -159,6 +159,99 @@ describe('markup install', () => {
     expect(defaultServerCommand('C:\\Program Files\\Markup\\markup.exe', '/x/dist/cli.js')).toEqual({ command: 'C:\\Program Files\\Markup\\markup.exe', args: ['mcp'] });
     expect(defaultServerCommand('/app/markup-x86_64-unknown-linux-gnu', '/x/dist/cli.js')).toEqual({ command: '/app/markup-x86_64-unknown-linux-gnu', args: ['mcp'] });
     expect(defaultServerCommand('/usr/bin/node', 'dist/cli.js')).toEqual({ command: 'node', args: [path.resolve('dist/cli.js'), 'mcp'] });
+  });
+});
+
+describe('new agents', () => {
+  it('claude desktop, windsurf and gemini use mcpServers in their own files', () => {
+    expect(configPath('claude-desktop', { ...env, platform: 'win32', appData: path.join(home, 'Roaming') })).toBe(path.join(home, 'Roaming', 'Claude', 'claude_desktop_config.json'));
+    expect(configPath('claude-desktop', { ...env, platform: 'darwin' })).toBe(path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'));
+    for (const agent of ['claude-desktop', 'windsurf', 'gemini'] as const) {
+      const file = configPath(agent, env);
+      write(file, JSON.stringify({ theme: 'x', mcpServers: { other: { command: 'o', args: [] } } }));
+      expect(install(agent, entry, env).ok).toBe(true);
+      const json = JSON.parse(read(file));
+      expect(json.theme).toBe('x');
+      expect(json.mcpServers).toEqual({ other: { command: 'o', args: [] }, markup: { command: entry.command, args: ['mcp'] } });
+    }
+    expect(configPath('windsurf', env)).toBe(path.join(home, '.codeium', 'windsurf', 'mcp_config.json'));
+    expect(configPath('gemini', env)).toBe(path.join(home, '.gemini', 'settings.json'));
+  });
+});
+
+describe('markup uninstall', () => {
+  it('removes only the markup entry from JSON configs, keeping a backup', () => {
+    const file = path.join(home, '.cursor', 'mcp.json');
+    write(file, JSON.stringify({ mcpServers: { other: { command: 'o' } }, theme: 'dark' }));
+    install('cursor', entry, env);
+    const installed = read(file);
+    expect(uninstall('cursor', env)).toEqual({ ok: true, message: `Removed markup from Cursor (${file}).` });
+    expect(JSON.parse(read(file))).toEqual({ mcpServers: { other: { command: 'o' } }, theme: 'dark' });
+    expect(read(`${file}.bak`)).toBe(installed);
+    expect(uninstall('cursor', env).message).toBe('markup was not set up in Cursor.');
+    expect(uninstall('vscode', env).message).toBe('markup was not set up in VS Code.');
+    expect(fs.existsSync(configPath('vscode', env))).toBe(false);
+  });
+
+  it('removes the codex table and its sub-tables, keeping the rest', () => {
+    const text = 'model = "o3"\n\n[mcp_servers.other]\ncommand = "other"\n\n[mcp_servers.markup]\ncommand = "x"\nargs = ["mcp"]\n\n[mcp_servers.markup.env]\nA = "1"\n\n[profiles.p]\nmodel = "y"\n';
+    expect(removeCodexTable(text)).toBe('model = "o3"\n\n[mcp_servers.other]\ncommand = "other"\n\n[profiles.p]\nmodel = "y"\n');
+    expect(removeCodexTable('[mcp_servers.markup]\ncommand = "x"\n')).toBe('');
+    expect(removeCodexTable('a = 1\n')).toBe('a = 1\n');
+    const file = configPath('codex', env);
+    write(file, 'model = "o3"\n');
+    install('codex', entry, env);
+    expect(uninstall('codex', env).ok).toBe(true);
+    expect(read(file)).toBe('model = "o3"\n');
+  });
+
+  it('claude code goes through claude mcp remove', () => {
+    expect(uninstall('claude-code', env)).toEqual({ ok: true, message: 'Removed markup from Claude Code.' });
+    expect(calls).toEqual([{ cmd: '/usr/bin/claude', args: ['mcp', 'remove', '--scope', 'user', 'markup'] }]);
+    env.run = () => ({ status: 1, stdout: '', stderr: 'No MCP server found with name: markup' });
+    expect(uninstall('claude-code', env).message).toBe('markup was not set up in Claude Code.');
+  });
+});
+
+describe('markup status', () => {
+  it('reads what each agent has configured', () => {
+    expect(readConfig('cursor', env)).toEqual({ state: 'missing' });
+    for (const agent of AGENTS.filter((a) => a !== 'claude-code')) {
+      install(agent, entry, env);
+      expect(readConfig(agent, env)).toEqual({ state: 'set', entry });
+    }
+    write(path.join(home, '.claude.json'), JSON.stringify({ mcpServers: { markup: { type: 'stdio', command: '/bin/markup', args: ['mcp'], env: {} } } }));
+    expect(readConfig('claude-code', env)).toEqual({ state: 'set', entry: { command: '/bin/markup', args: ['mcp'] } });
+    write(configPath('cursor', env), '{ nope');
+    expect(readConfig('cursor', env).state).toBe('unreadable');
+  });
+
+  it('reads a codex entry and ignores other tables', () => {
+    expect(readCodexEntry('[mcp_servers.markup]\ncommand = "C:\\\\m.exe" # here\nargs = ["mcp"]\n[x]\ncommand = "no"\n')).toEqual({ command: 'C:\\m.exe', args: ['mcp'] });
+    expect(readCodexEntry('[mcp_servers.other]\ncommand = "x"\n')).toBeNull();
+  });
+
+  it('flags entries whose binary or script is gone', () => {
+    const exists = (p: string) => p === '/ok/markup' || p === '/ok/cli.js';
+    expect(entryProblem({ command: '/ok/markup', args: ['mcp'] }, exists)).toBeNull();
+    expect(entryProblem({ command: '/gone/markup', args: ['mcp'] }, exists)).toBe('points to a missing file: /gone/markup');
+    expect(entryProblem({ command: 'node', args: ['/ok/cli.js', 'mcp'] }, exists)).toBeNull();
+    expect(entryProblem({ command: 'node', args: ['/gone/cli.js', 'mcp'] }, exists)).toBe('points to a missing file: /gone/cli.js');
+    expect(entryProblem({ command: 'npx', args: ['-y', 'x', 'mcp'] }, exists)).toBeNull();
+    expect(entryProblem({ command: '', args: [] }, exists)).toBe('has no command');
+  });
+
+  it('detects agents by their folders or commands', () => {
+    env.findExecutable = () => null;
+    for (const agent of AGENTS) expect(detectAgent(agent, env)).toBeNull();
+    fs.mkdirSync(path.join(home, '.cursor'));
+    fs.mkdirSync(path.join(home, '.gemini'));
+    expect(detectAgent('cursor', env)).toBe(path.join(home, '.cursor'));
+    expect(detectAgent('gemini', env)).toBe(path.join(home, '.gemini'));
+    env.findExecutable = (name) => (name === 'claude' || name === 'codex' ? `/bin/${name}` : null);
+    expect(detectAgent('claude-code', env)).toBe('claude command');
+    expect(detectAgent('codex', env)).toBe('codex command');
+    expect(detectAgent('windsurf', env)).toBeNull();
   });
 });
 

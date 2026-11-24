@@ -31,7 +31,7 @@
           "args": [
             "install",
             {
-              "validator": "^(claude-code|cursor|vscode|codex|opencode)$"
+              "validator": "^(claude-code|cursor|vscode|codex|opencode|claude-desktop|windsurf|gemini)$"
             }
           ]
         }

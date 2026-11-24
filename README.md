@@ -18,14 +18,32 @@ The desktop scripts first compile the `markup` CLI into a native binary with `pn
 
 In the desktop app, open **Connect an agent** in the editor top bar and click **Add to** next to your agent. The web build shows the same setup as commands and snippets to copy.
 
-From a terminal:
+Without the app or the repository, one command installs the `markup` CLI (a self-contained binary in `~/.markup/bin`, no Node needed) and connects the agents it finds:
+
+```sh
+curl -fsSL https://markup.here/install.sh | sh      # macOS and Linux
+irm https://markup.here/install.ps1 | iex           # Windows PowerShell
+```
+
+Then:
+
+```sh
+markup setup [agent...]       # find agents and connect them (interactive; --yes for all found)
+markup status                 # each agent's config, and whether Markup is open
+markup update                 # replace the CLI with the newest release
+markup uninstall [agent...]   # remove markup from agents' configs
+```
+
+Agents: `claude-code`, `cursor`, `vscode`, `codex`, `opencode`, `claude-desktop`, `windsurf`, `gemini`. Every config change keeps the previous file as `<file>.bak`; Claude Code is set up with `claude mcp add --scope user markup -- <command> mcp`. `markup install <agent>` connects one agent without questions (the desktop app uses it), and `markup install print` prints every snippet without changing anything. Pass `--command <path>` to point agents at a different `markup` binary.
+
+The install scripts live in `../markup-website/public/` and download the `markup-cli-*` assets of the latest GitHub release, which `.github/workflows/release.yml` builds for every platform.
+
+From a clone:
 
 ```sh
 pnpm --filter @markup/mcp build           # builds packages/mcp/dist/cli.js
-node packages/mcp/dist/cli.js install claude-code
+node packages/mcp/dist/cli.js setup
 ```
-
-`markup install <agent>` accepts `claude-code`, `cursor`, `vscode`, `codex`, `opencode`, or `print` (prints every snippet without changing anything). It merges a `markup` entry into the agent's user config and writes `<file>.bak` before changing an existing file. Claude Code is set up by running `claude mcp add --scope user markup -- <command> mcp`. Pass `--command <path>` to point agents at a different `markup` binary.
 
 ## Loading the extension
 

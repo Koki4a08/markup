@@ -1,11 +1,20 @@
-// Compiles `markup` to one native binary named the way Tauri expects a sidecar (markup-<target-triple>[.exe]),
-// then copies it to apps/app/src-tauri/binaries for bundle.externalBin.
+// Compiles `markup` to one native binary with Bun.
+//
+//   node compile.mjs
+//     The Tauri sidecar for this machine (markup-<target-triple>[.exe]), copied to apps/app/src-tauri/binaries.
+//   node compile.mjs --target bun-darwin-x64 --triple x86_64-apple-darwin
+//     The sidecar cross-compiled for another target.
+//   node compile.mjs --target bun-linux-arm64 --out dist/release/markup-cli-linux-arm64
+//     A standalone CLI for the release assets that the install scripts download. Not copied anywhere.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+import { version } from './version.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+const { values } = parseArgs({ options: { target: { type: 'string' }, triple: { type: 'string' }, out: { type: 'string' } } });
 
 function hostTriple() {
   try {
@@ -20,11 +29,23 @@ function hostTriple() {
   return `${arch}-unknown-linux-gnu`;
 }
 
-const triple = process.env.TAURI_TARGET_TRIPLE ?? hostTriple();
-const name = `markup-${triple}${triple.includes('windows') ? '.exe' : ''}`;
-const outfile = join(here, 'dist', name);
-execFileSync('bun', ['build', 'src/cli.ts', '--compile', '--outfile', outfile], { cwd: here, stdio: 'inherit' });
-const sidecarDir = join(here, '..', '..', 'apps', 'app', 'src-tauri', 'binaries');
-mkdirSync(sidecarDir, { recursive: true });
-copyFileSync(outfile, join(sidecarDir, name));
-console.log(`compiled ${outfile}\ncopied to ${join(sidecarDir, name)}`);
+const compile = (outfile) => {
+  mkdirSync(dirname(outfile), { recursive: true });
+  const args = ['build', 'src/cli.ts', '--compile', '--define', `__MARKUP_VERSION__=${JSON.stringify(version)}`, '--outfile', outfile];
+  if (values.target) args.push(`--target=${values.target}`);
+  execFileSync('bun', args, { cwd: here, stdio: 'inherit' });
+  console.log(`compiled ${outfile} (markup ${version})`);
+};
+
+if (values.out) {
+  compile(resolve(here, values.out));
+} else {
+  const triple = values.triple ?? process.env.TAURI_TARGET_TRIPLE ?? hostTriple();
+  const name = `markup-${triple}${triple.includes('windows') ? '.exe' : ''}`;
+  const outfile = join(here, 'dist', name);
+  compile(outfile);
+  const sidecarDir = join(here, '..', '..', 'apps', 'app', 'src-tauri', 'binaries');
+  mkdirSync(sidecarDir, { recursive: true });
+  copyFileSync(outfile, join(sidecarDir, name));
+  console.log(`copied to ${join(sidecarDir, name)}`);
+}
