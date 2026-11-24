@@ -7,6 +7,7 @@
 | [`PRODUCT.md`](PRODUCT.md) | Product purpose, principles, positioning and constraints | Current |
 | [`superpowers/plans/2026-11-18-markup-foundation.md`](superpowers/plans/2026-11-18-markup-foundation.md) | Plan for the foundation: document model, editor, bridge, MCP | Historical (merged) |
 | [`superpowers/plans/2026-11-18-mcp-parity-and-snapshot.md`](superpowers/plans/2026-11-18-mcp-parity-and-snapshot.md) | Plan for MCP tool parity, multi-file workspace, comments, export, fonts, paste, and the Chrome snapshot extension | Historical |
+| [`superpowers/plans/2026-11-24-accounts-and-cloud.md`](superpowers/plans/2026-11-24-accounts-and-cloud.md) | Plan for optional accounts, cloud sync, storage quota and pricing, personal usage stats | Planned |
 
 Plans are step-by-step task lists with checkboxes. They record intent at the time they were written. The code is the source of truth.
 

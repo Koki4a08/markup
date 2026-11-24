@@ -1,5 +1,6 @@
 # Builds the Markup desktop app for every platform and attaches the installers
-# to a GitHub release, plus the small "Markup Setup" bootstrapper for Windows.
+# to a GitHub release, plus the small "Markup Setup" bootstrapper for Windows and
+# the standalone `markup` CLI binaries that markup.here/install.sh and install.ps1 download.
 #
 # - Push a tag like v0.2.0 to build and publish that release.
 # - Or run it by hand (Actions > Release > Run workflow) with an existing tag to
@@ -78,9 +79,7 @@ jobs:
       # ...or, when cross-compiling, for the target, named the way Tauri expects.
       - if: ${{ matrix.target }}
         working-directory: packages/mcp
-        run: |
-          mkdir -p ../../apps/app/src-tauri/binaries
-          bun build src/cli.ts --compile --target=${{ matrix.bun-target }} --outfile ../../apps/app/src-tauri/binaries/markup-${{ matrix.target }}
+        run: node compile.mjs --target ${{ matrix.bun-target }} --triple ${{ matrix.target }}
 
       # Signs the update bundles and uploads latest.json, the feed the app's updater polls
       # (plugins.updater in tauri.conf.json). The public half of the key lives in that config.
@@ -106,6 +105,66 @@ jobs:
           # "latest" never points at a half-built release. The setup job publishes it.
           releaseDraft: true
           prerelease: false
+
+  cli:
+    name: CLI (${{ matrix.name }})
+    needs: desktop
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Bun cross-compiles Linux and Windows from one runner. macOS builds run on
+          # macOS so the binaries carry the ad-hoc signature Apple silicon requires.
+          - name: Linux and Windows
+            os: ubuntu-latest
+            targets: linux-x64:bun-linux-x64 linux-arm64:bun-linux-arm64 windows-x64.exe:bun-windows-x64
+            smoke: linux-x64
+          - name: macOS
+            os: macos-latest
+            targets: macos-arm64:bun-darwin-arm64 macos-x64:bun-darwin-x64
+            smoke: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+      - run: pnpm install --frozen-lockfile
+
+      - name: Compile
+        working-directory: packages/mcp
+        run: |
+          for pair in ${{ matrix.targets }}; do
+            node compile.mjs --target "${pair#*:}" --out "dist/release/markup-cli-${pair%%:*}"
+          done
+
+      - name: Smoke test
+        working-directory: packages/mcp/dist/release
+        run: |
+          test "$(./markup-cli-${{ matrix.smoke }} --version)" = "${TAG#v}"
+          ./markup-cli-${{ matrix.smoke }} --help
+
+      # The binaries carry the Bun runtime (about 100 MB); compressed they download in a third of the time.
+      - name: Compress
+        working-directory: packages/mcp/dist/release
+        run: |
+          for f in markup-cli-*; do
+            case "$f" in
+              *.exe) zip -9 -q "${f%.exe}.zip" "$f" ;;
+              *) gzip -9 -k "$f" ;;
+            esac
+          done
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: packages/mcp/dist/release
+        run: gh release upload "$TAG" markup-cli-*.gz markup-cli-*.zip --clobber
 
   extension:
     name: Browser extension
@@ -160,7 +219,7 @@ jobs:
 
   setup:
     name: Markup Setup (Windows)
-    needs: [desktop, extension]
+    needs: [desktop, cli, extension]
     runs-on: windows-latest
     steps:
       # Setup always fetches the newest release at run time, so it is built from

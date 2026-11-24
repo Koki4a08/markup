@@ -4,7 +4,7 @@ import { measureNode, unionRects, type Rect } from '../canvas/geometry';
 import { useCanvasGestures, type DrawDraft } from '../canvas/gestures';
 import { DrawPreview, HoverOverlay } from '../canvas/HoverOverlay';
 import { SelectionOverlay } from '../canvas/SelectionOverlay';
-import { TickStore, useZoomPercent, ValueStore, type ViewportStore } from '../canvas/store';
+import { TickStore, ValueStore, type ViewportStore } from '../canvas/store';
 import { anchorWorld } from '../comments/anchor';
 import { CommentLayer } from '../comments/CommentLayer';
 import { DEFAULT_FILTER, markSeen, type CommentFilter, type Draft } from '../comments/state';
@@ -16,14 +16,15 @@ import { icons } from '../panels/icons';
 import { RightPanel } from '../panels/RightPanel';
 import { captureThumbnail, createDomTools } from '../bridge/domTools';
 import { LayersPanel } from '../panels/LayersPanel';
-import { McpPanel } from '../panels/McpPanel';
+import { NoSelection } from '../panels/NoSelection';
+import { PanelTop } from '../panels/PanelTop';
 import { SelectionProvider, useSelection } from '../canvas/selection';
 import { useDoc } from '../store/DocProvider';
 import { usePages } from '../store/hooks';
 import { CopyMenu, type CopyMenuState } from '../export/CopyMenu';
 import { sanitizeText } from '../canvas/NodeView';
 import { pasteIntoDoc } from '../clipboard/paste';
-import { useTabs, useWorkspace } from '../workspace/WorkspaceProvider';
+import { useWorkspace } from '../workspace/WorkspaceProvider';
 import { PanelResizer, usePanelWidths } from '../ui/PanelResizer';
 import { UpdateNotice } from '../desktop/UpdateNotice';
 import { keepEditingAcrossWindowBlur } from '../ui/windowFocus';
@@ -91,10 +92,7 @@ function EditorShell({ view }: { view: TabView }) {
   const [revealId, setRevealId] = useState<string | null>(null);
   const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
   const [toast, setToast] = useState('');
-  const [mcpOpen, setMcpOpen] = useState(false);
   const [widths, setWidths] = usePanelWidths();
-  const closeMcp = useCallback(() => setMcpOpen(false), []);
-  const fileName = useTabs().find((t) => t.fileId === doc.fileId)?.name ?? doc.name;
   const shownPageId = page?.id ?? activePageId;
   // Agents read the page the tab shows; the workspace remembers it per tab.
   useEffect(() => workspace.setActivePage(doc.fileId, shownPageId), [workspace, doc, shownPageId]);
@@ -372,6 +370,8 @@ function EditorShell({ view }: { view: TabView }) {
   );
   const leftResizer = useMemo(() => <PanelResizer side="left" width={widths.left} onWidth={(left) => setWidths((w) => ({ ...w, left }))} />, [widths.left, setWidths]);
   const rightResizer = useMemo(() => <PanelResizer side="right" width={widths.right} onWidth={(right) => setWidths((w) => ({ ...w, right }))} />, [widths.right, setWidths]);
+  const panelTop = useMemo(() => <PanelTop bridgeStatus={bridgeStatus} viewport={viewport} onZoom={(command) => runCommand(command, ctx)} />, [bridgeStatus, viewport, ctx]);
+  const noSelection = useMemo(() => (rootId ? <NoSelection pageRootId={rootId} /> : null), [rootId]);
 
   const createComment = (d: Draft, body: string) => {
     const id = doc.createThread(actor, { ...d, body });
@@ -384,30 +384,6 @@ function EditorShell({ view }: { view: TabView }) {
 
   return (
     <div className="editor">
-      <header className="topbar">
-        <div className="topbar-start">
-          <img className="brand-mark" src="/icon.svg" alt="" width={20} height={20} />
-          <span className="doc-path">
-            <span className="file-name">{fileName}</span>
-            <span className="doc-path-sep" aria-hidden>
-              /
-            </span>
-            <span className="page-name">{page.name}</span>
-          </span>
-        </div>
-        <div className="topbar-end">
-          <span className={`bridge-status is-${bridgeStatus}`} data-tip={bridgeStatus === 'connected' ? 'Agents can reach this file through markup mcp' : 'Run markup mcp from an agent to connect'}>
-            {bridgeStatus === 'connected' ? 'Agents connected' : 'Agents offline'}
-          </span>
-          <div className="mcp-anchor">
-            <button className="topbar-button" data-mcp-toggle aria-expanded={mcpOpen} onClick={() => setMcpOpen((o) => !o)}>
-              Connect an agent
-            </button>
-            {mcpOpen && <McpPanel onClose={closeMcp} />}
-          </div>
-          <ZoomButton viewport={viewport} onClick={zoomToFit} />
-        </div>
-      </header>
       <main className="workspace" style={{ gridTemplateColumns: `${widths.left}px ${RAIL_WIDTH}px minmax(0, 1fr) ${widths.right}px` }}>
         <LayersPanel
           activePageId={page.id}
@@ -470,11 +446,7 @@ function EditorShell({ view }: { view: TabView }) {
             </>
           }
         />
-        <RightPanel
-          comments={commentsProps}
-          resizer={rightResizer}
-          pageRootId={rootId}
-        />
+        <RightPanel comments={commentsProps} resizer={rightResizer} pageRootId={rootId} top={panelTop} noSelection={noSelection} />
         <UpdateNotice />
       </main>
       {copyMenu && <CopyMenu at={copyMenu} onClose={() => setCopyMenu(null)} onPick={(command) => runCommand(command, ctx)} />}
@@ -484,15 +456,5 @@ function EditorShell({ view }: { view: TabView }) {
         </div>
       )}
     </div>
-  );
-}
-
-/** The zoom readout; re-renders only when the rounded percentage changes, not on every pan or zoom frame. */
-function ZoomButton({ viewport, onClick }: { viewport: ViewportStore; onClick: () => void }) {
-  const percent = useZoomPercent(viewport);
-  return (
-    <button className="zoom" data-tip="Zoom to fit" data-tip-key="⇧1" onClick={onClick}>
-      {percent}%
-    </button>
   );
 }

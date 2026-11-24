@@ -76,8 +76,8 @@
 .canvas-menu-item:not(:disabled):focus-visible,
 .canvas-menu-item:not(:disabled):focus,
 .canvas-menu-item[aria-expanded='true'] {
-  background: var(--accent-fill, var(--focus, #2f6fe8));
-  color: #fff;
+  background: var(--menu-hover, rgb(255 255 255 / 0.08));
+  color: var(--text-strong, #fff);
   outline: none;
 }
 
@@ -86,7 +86,7 @@
 .canvas-menu-item:not(:disabled):hover .canvas-menu-chevron,
 .canvas-menu-item:not(:disabled):focus .canvas-menu-chevron,
 .canvas-menu-item[aria-expanded='true'] .canvas-menu-chevron {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-2, #a1a1aa);
 }
 
 .canvas-menu-item:disabled {

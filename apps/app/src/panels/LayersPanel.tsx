@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { MarkupNode, Move } from '@markup/doc';
 import { icons } from './icons';
 import { IdSetStore, useIdIn } from './idSetStore';
@@ -116,6 +116,34 @@ export const LayersPanel = memo(function LayersPanel({ activePageId, onPage, ren
     stores.expanded.replace([]);
   }, [collapseSignal, doc, stores]);
 
+  const rootId = page && page.type === 'page' ? page.rootId : '';
+  // Whether any open row on this page shows children. The expanded set also keeps ids from other pages
+  // and from layers that lost their children, which should not turn the button into "Collapse all".
+  const anyOpen = useSyncExternalStore(stores.expanded.subscribeAny, () => {
+    const parentOf = (id: string) => (doc.nodes.get(id)?.get('parentId') as string | null | undefined) ?? null;
+    for (const id of stores.expanded.current()) {
+      if (!doc.getNode(id)?.children.length) continue;
+      for (let p = parentOf(id); p; p = parentOf(p)) if (p === rootId) return true;
+    }
+    return false;
+  });
+  const toggleAll = () => {
+    if (anyOpen) {
+      stores.expanded.replace([]);
+      return;
+    }
+    const open: string[] = [];
+    const walk = (id: string) => {
+      const children = doc.getNode(id)?.children;
+      if (!children?.length) return;
+      if (id !== rootId) open.push(id);
+      for (const child of children) walk(child);
+    };
+    walk(rootId);
+    stores.expanded.replace(open);
+  };
+  const canToggleAll = !!root?.children.length;
+
   return (
     <aside className="panel layers-panel" aria-label="Pages and layers">
       {resizer}
@@ -177,6 +205,16 @@ export const LayersPanel = memo(function LayersPanel({ activePageId, onPage, ren
       <section className="panel-section layers">
         <div className="panel-heading">
           <span>Layers</span>
+          {canToggleAll && (
+            <button
+              className="icon-button"
+              aria-label={anyOpen ? 'Collapse all layers' : 'Expand all layers'}
+              data-tip={anyOpen ? 'Collapse all' : 'Expand all'}
+              onClick={toggleAll}
+            >
+              {anyOpen ? icons.collapseAll : icons.expandAll}
+            </button>
+          )}
         </div>
         <ul className="layer-tree" role="tree" aria-label="Layers">
           {root?.children.map((id) => (

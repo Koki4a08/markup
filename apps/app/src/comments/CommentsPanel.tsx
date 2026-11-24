@@ -67,7 +67,7 @@ export function CommentsPanel({ activePageId, filter, onFilter, selectedId, onSe
           </select>
         </div>
         <label className="comments-check">
-          <input type="checkbox" checked={filter.currentPageOnly} onChange={(e) => set({ currentPageOnly: e.target.checked })} />
+          <input type="checkbox" className="checkbox" checked={filter.currentPageOnly} onChange={(e) => set({ currentPageOnly: e.target.checked })} />
           Current page only
         </label>
       </div>

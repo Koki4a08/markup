@@ -19,10 +19,11 @@
   --chrome: #141416;
   --panel: #1b1b1e;
   --popover: #222225;
-  /* Right-click menus: translucent vibrancy, like a native macOS menu. */
+  /* Menus, dropdowns and the select pickers: translucent vibrancy, like a native macOS menu, with a neutral hover. */
   --menu-bg: rgb(34 34 38 / 0.72);
   --menu-border: rgb(255 255 255 / 0.1);
   --menu-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.6), 0 10px 32px -4px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.25);
+  --menu-hover: rgb(var(--ink) / 0.08);
   --raised: #28282c;
   --raised-hover: #2f2f34;
   --raised-active: #37373c;
@@ -610,10 +611,12 @@ html.is-resizing-panel * {
   z-index: 60;
   width: 340px;
   padding: 4px 0 14px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--menu-border);
   border-radius: var(--r-lg);
-  background: var(--popover);
-  box-shadow: var(--shadow-pop);
+  background: var(--menu-bg);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: var(--menu-shadow);
   color: var(--text);
   animation: pop-in var(--dur) var(--ease-out);
 }
@@ -743,75 +746,12 @@ html.is-resizing-panel * {
 
 .editor {
   display: grid;
-  grid-template-rows: 44px 1fr;
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   background: var(--panel);
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-width: 0;
-  padding: 0 10px 0 14px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-
-.topbar-start,
-.topbar-end {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.topbar-start {
-  gap: 10px;
-}
-
-.topbar-end {
-  flex-shrink: 0;
-  gap: 8px;
-}
-
-.brand-mark {
-  display: block;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-}
-
-.doc-path {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.file-name {
-  overflow: hidden;
-  font-weight: 600;
-  font-size: 12.5px;
-  color: var(--text);
-  text-overflow: ellipsis;
-}
-
-.page-name {
-  overflow: hidden;
-  color: var(--text-3);
-  text-overflow: ellipsis;
-}
-
-.doc-path-sep {
-  color: var(--text-3);
-  opacity: 0.6;
-}
-
-.icon-button,
-.zoom {
+.icon-button {
   display: inline-grid;
   place-items: center;
   border: 0;
@@ -823,8 +763,7 @@ html.is-resizing-panel * {
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
 
-.icon-button:hover,
-.zoom:hover {
+.icon-button:hover {
   background: var(--hover-strong);
   color: var(--text);
 }
@@ -835,13 +774,55 @@ html.is-resizing-panel * {
   padding: 0;
 }
 
-.zoom {
-  height: 28px;
-  min-width: 52px;
-  padding: 0 8px;
+/* Top of the right panel: agent status and the zoom menu (they lived in a top bar before). */
+.panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 44px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-top .bridge-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zoom-menu-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 7px 0 8px;
+  border: 0;
+  border-radius: var(--r);
+  background: transparent;
   color: var(--text-2);
+  font: inherit;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  cursor: default;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.zoom-menu-button:hover,
+.zoom-menu-button.is-open {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+
+.zoom-menu-button svg {
+  color: var(--text-3);
+}
+
+.zoom-menu {
+  min-width: 200px;
+  transform-origin: top right;
 }
 
 .bridge-status {
@@ -875,8 +856,44 @@ html.is-resizing-panel * {
   box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
 }
 
-.mcp-anchor {
-  position: relative;
+/* "Connect your agent" panel, opened from the right panel's MCP section, sits beside the panel. */
+.mcp-side {
+  position: fixed;
+  z-index: 30;
+}
+
+.mcp-side .mcp-panel {
+  position: static;
+}
+
+.section-button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--border-input), inset 0 1px 0 rgb(255 255 255 / 0.03);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: default;
+  transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.section-button:hover,
+.section-button[aria-expanded='true'] {
+  background: var(--raised-hover);
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.16), inset 0 1px 0 rgb(255 255 255 / 0.03);
+}
+
+.section-button:active {
+  background: var(--raised-active);
+}
+
+.section-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .topbar-button {
@@ -1987,6 +2004,128 @@ select.field-input:focus {
   background-color: var(--chrome);
 }
 
+/* Chromium (Windows webview, Chrome): the open list is the app's menu, not the OS picker. Safari and
+   Firefox keep their native list, which already matches the platform. */
+@supports (appearance: base-select) {
+  select.field-input,
+  select.field-input::picker(select) {
+    appearance: base-select;
+  }
+
+  select.field-input {
+    display: flex;
+    align-items: center;
+  }
+
+  select.field-input::picker-icon {
+    display: none;
+  }
+
+  select.field-input::picker(select) {
+    min-width: anchor-size(width);
+    max-height: min(320px, calc(100vh - 16px));
+    margin: 4px 0;
+    padding: 5px;
+    overflow-y: auto;
+    border: 1px solid var(--menu-border);
+    border-radius: 10px;
+    background: var(--menu-bg);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    box-shadow: var(--menu-shadow);
+    color: var(--text);
+    transform-origin: top center;
+  }
+
+  select.field-input:open::picker(select) {
+    animation: pop-in var(--dur) var(--ease-out);
+  }
+
+  select.field-input option {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 26px;
+    padding: 0 8px;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    white-space: nowrap;
+    cursor: default;
+    transition: background-color 60ms ease-out;
+  }
+
+  select.field-input option:not(:disabled):hover,
+  select.field-input option:not(:disabled):focus-visible {
+    background: var(--menu-hover);
+    color: var(--text-strong);
+    outline: none;
+  }
+
+  select.field-input option:disabled {
+    color: var(--text-3);
+  }
+
+  select.field-input option::checkmark {
+    order: 1;
+    width: 12px;
+    height: 12px;
+    margin-left: auto;
+    content: '';
+    background: currentColor;
+    color: var(--text-2);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 6.3 2.3 2.2 4.7-5'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 6.3 2.3 2.2 4.7-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    select.field-input:open::picker(select) {
+      animation: none;
+    }
+  }
+}
+
+/* App checkbox: replaces the OS square with a token-coloured one that reads in both themes. */
+input.checkbox {
+  appearance: none;
+  display: inline-grid;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid rgb(var(--ink) / 0.22);
+  border-radius: var(--r-sm);
+  background: var(--raised) center / 10px 10px no-repeat;
+  cursor: default;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+
+input.checkbox:hover {
+  border-color: rgb(var(--ink) / 0.34);
+}
+
+input.checkbox:checked {
+  border-color: var(--accent-fill);
+  background-color: var(--accent-fill);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2.5 6.3 2.3 2.2 4.7-5'/%3E%3C/svg%3E");
+}
+
+input.checkbox:checked:hover {
+  border-color: var(--accent-fill-hover);
+  background-color: var(--accent-fill-hover);
+}
+
+input.checkbox:focus-visible {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--focus-soft);
+}
+
+input.checkbox:disabled {
+  opacity: 0.5;
+}
+
 button.field-input {
   grid-column: 1 / -1;
   color: var(--text-2);
@@ -2130,6 +2269,8 @@ button.field-input:hover {
   z-index: 1;
   width: 16px;
   height: 16px;
+  padding: 0;
+  border: 0;
   border-radius: 4px;
   overflow: hidden;
   cursor: default;
@@ -2161,9 +2302,419 @@ button.field-input:hover {
   rotate: 45deg;
 }
 
-.swatch:has(:focus-visible) {
+.swatch:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
+}
+
+.swatch.is-open {
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.18), 0 0 0 2px var(--panel), 0 0 0 3.5px var(--accent-line);
+}
+
+/* ───────────────────────── Colour picker ───────────────────────── */
+
+.color-picker {
+  --cp-head: color-mix(in srgb, var(--popover) 55%, var(--chrome));
+  --cp-line: var(--border-strong);
+  --cp-field: rgb(var(--ink) / 0.055);
+  --cp-checker: repeating-conic-gradient(rgb(var(--ink) / 0.13) 0% 25%, transparent 0% 50%) 0 0 / 8px 8px;
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 530px;
+  max-width: calc(100vw - 16px);
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: var(--popover);
+  box-shadow: 0 0 0 1px var(--cp-line), var(--shadow-pop);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 16px;
+  animation: pop-in var(--dur) var(--ease-out);
+}
+
+.cp-head {
+  display: flex;
+  align-items: flex-end;
+  height: 32px;
+  padding: 0 4px 0 8px;
+  background: var(--cp-head);
+  box-shadow: inset 0 -1px 0 var(--cp-line);
+}
+
+.cp-tabs {
+  display: flex;
+  align-self: stretch;
+  align-items: flex-end;
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-tab {
+  position: relative;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r) var(--r) 0 0;
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: default;
+  transition: color var(--dur-fast) ease-out, background-color var(--dur-fast) ease-out;
+}
+
+.cp-tab:hover {
+  color: var(--text);
+}
+
+.cp-tab.is-active {
+  z-index: 1;
+  background: var(--popover);
+  color: var(--text);
+  box-shadow: 0 -1px 0 var(--cp-line), -1px 0 0 var(--cp-line), 1px 0 0 var(--cp-line);
+}
+
+/* Inverted corners where the active tab meets the body, so tab and body read as one surface. */
+.cp-tab.is-active::before,
+.cp-tab.is-active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+}
+
+.cp-tab.is-active::before {
+  left: -6px;
+  background: radial-gradient(circle at 0 0, transparent 5.5px, var(--cp-line) 5.5px 6.5px, var(--popover) 6.5px);
+}
+
+.cp-tab.is-active::after {
+  right: -6px;
+  background: radial-gradient(circle at 100% 0, transparent 5.5px, var(--cp-line) 5.5px 6.5px, var(--popover) 6.5px);
+}
+
+.cp-tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.cp-head-actions {
+  display: flex;
+  align-self: center;
+  gap: 2px;
+}
+
+.cp-head-button {
+  color: var(--text-3);
+}
+
+.cp-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+}
+
+.cp-planes {
+  display: flex;
+  flex: 1 1 260px;
+  gap: 10px;
+  height: 244px;
+}
+
+.cp-area,
+.cp-strip {
+  position: relative;
+  border-radius: var(--r);
+  outline: none;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.cp-area::after,
+.cp-strip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1), inset 0 0 0 0.5px rgb(255 255 255 / 0.06);
+  pointer-events: none;
+}
+
+.cp-area {
+  flex: 1;
+  min-width: 0;
+  background-image: linear-gradient(to top, #000, rgb(0 0 0 / 0)), linear-gradient(to right, #fff, var(--cp-hue));
+}
+
+.cp-strip {
+  flex: 0 0 15px;
+  cursor: ns-resize;
+}
+
+.cp-strip.is-hue {
+  background-image: linear-gradient(to bottom, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+
+.cp-strip.is-alpha {
+  background: linear-gradient(to bottom, var(--cp-solid), var(--cp-clear)), var(--cp-checker), var(--popover);
+}
+
+@supports (background-image: linear-gradient(in srgb, red, blue)) {
+  .cp-area {
+    background-image: linear-gradient(in srgb to top, #000, rgb(0 0 0 / 0)), linear-gradient(in srgb to right, #fff, var(--cp-hue));
+  }
+
+  .color-picker.is-p3 .cp-area {
+    background-image: linear-gradient(in display-p3 to top, #000, rgb(0 0 0 / 0)), linear-gradient(in display-p3 to right, #fff, var(--cp-hue));
+  }
+
+  .color-picker.is-p3 .cp-strip.is-hue {
+    background-image: linear-gradient(
+      in display-p3 to bottom,
+      color(display-p3 1 0 0),
+      color(display-p3 1 1 0),
+      color(display-p3 0 1 0),
+      color(display-p3 0 1 1),
+      color(display-p3 0 0 1),
+      color(display-p3 1 0 1),
+      color(display-p3 1 0 0)
+    );
+  }
+
+  .cp-strip.is-alpha {
+    background: linear-gradient(in srgb to bottom, var(--cp-solid), var(--cp-clear)), var(--cp-checker), var(--popover);
+  }
+
+  .color-picker.is-p3 .cp-strip.is-alpha {
+    background: linear-gradient(in display-p3 to bottom, var(--cp-solid), var(--cp-clear)), var(--cp-checker), var(--popover);
+  }
+}
+
+.cp-area-thumb {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  translate: -50% -50%;
+  box-shadow: inset 0 0 0 2.5px #fff, inset 0 0 0 3.5px rgb(0 0 0 / 0.15), 0 0 0 1px rgb(0 0 0 / 0.2), 0 1px 3px rgb(0 0 0 / 0.35);
+  pointer-events: none;
+}
+
+.cp-strip-thumb {
+  position: absolute;
+  z-index: 1;
+  left: 1px;
+  right: 1px;
+  height: 6px;
+  border-radius: 3px;
+  translate: 0 -50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12), 0 1px 3px rgb(0 0 0 / 0.35);
+  pointer-events: none;
+}
+
+.cp-area:focus-visible .cp-area-thumb {
+  box-shadow: inset 0 0 0 2.5px #fff, inset 0 0 0 3.5px rgb(0 0 0 / 0.15), 0 0 0 1px rgb(0 0 0 / 0.2), 0 0 0 4px var(--focus-soft);
+}
+
+.cp-strip:focus-visible .cp-strip-thumb {
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12), 0 0 0 3.5px var(--focus-soft);
+}
+
+.cp-side {
+  display: flex;
+  flex: 1 1 212px;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cp-compare-swatches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 56px;
+  overflow: hidden;
+  border-radius: var(--r);
+  background: var(--cp-checker), var(--popover);
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.08);
+}
+
+.cp-compare-swatch {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  cursor: default;
+}
+
+.cp-compare-swatch.is-previous {
+  background: var(--cp-previous);
+  transition: opacity var(--dur-fast) ease-out;
+}
+
+.cp-compare-swatch.is-previous:not(:disabled):hover {
+  opacity: 0.88;
+}
+
+.cp-compare-swatch.is-previous:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+  border-radius: var(--r) 0 0 var(--r);
+}
+
+.cp-compare-swatch.is-empty {
+  background: linear-gradient(to top right, transparent calc(50% - 0.75px), var(--danger) calc(50% - 0.75px) calc(50% + 0.75px), transparent calc(50% + 0.75px)), var(--popover);
+}
+
+.cp-compare-swatch.is-new {
+  background: var(--cp-current);
+}
+
+.cp-compare-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 4px 0;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.cp-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.cp-group {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  overflow: hidden;
+  border-radius: var(--r);
+  background: var(--cp-field);
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.cp-group:hover {
+  background: rgb(var(--ink) / 0.08);
+}
+
+.cp-cell {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+}
+
+.cp-cell + .cp-cell::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--popover);
+}
+
+.cp-input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-input:focus {
+  background: var(--chrome);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+.cp-cell:first-child .cp-input:focus {
+  border-radius: var(--r) 0 0 var(--r);
+}
+
+.cp-cell:last-child .cp-input:focus {
+  border-radius: 0 var(--r) var(--r) 0;
+}
+
+.cp-cell.is-hex {
+  flex: 1 1 auto;
+}
+
+.cp-cell.is-hex .cp-input {
+  text-transform: uppercase;
+}
+
+.cp-row.is-hex .cp-cell:not(.is-hex) {
+  flex: 0 0 64px;
+}
+
+.cp-row.is-hex .cp-cell:not(.is-hex) .cp-input {
+  padding-right: 20px;
+}
+
+.cp-group-sep {
+  color: var(--text-3);
+}
+
+.cp-suffix {
+  position: absolute;
+  right: 8px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.cp-row-labels {
+  display: flex;
+  grid-column: 1;
+  padding: 1px 0 4px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.cp-row-labels > span {
+  flex: 1 1 0;
+  padding: 0 8px;
+}
+
+.cp-copy {
+  color: var(--text-3);
+}
+
+.cp-copy.is-done {
+  color: var(--success);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .color-picker {
+    animation: none;
+  }
 }
 
 /* ───────────── Effect sections (outline, border, shadows, filters) ───────────── */
@@ -3482,14 +4033,14 @@ button.field-input:hover {
 
 .context-menu .row:hover,
 .context-menu .row:focus-visible {
-  background: var(--accent-fill);
-  color: #fff;
+  background: var(--menu-hover);
+  color: var(--text-strong);
   outline: none;
 }
 
 .context-menu .row:hover .row-icon,
 .context-menu .row:focus-visible .row-icon {
-  color: #fff;
+  color: var(--text);
 }
 
 .context-menu .row:disabled {
@@ -4087,9 +4638,8 @@ button.field-input:hover {
   cursor: default;
 }
 
-.comments-check input {
-  margin: 0;
-  accent-color: var(--accent-fill);
+.comments-check:hover {
+  color: var(--text);
 }
 
 .comment-list {
@@ -4149,10 +4699,12 @@ button.field-input:hover {
   width: 420px;
   max-height: calc(100vh - 110px);
   overflow: auto;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--menu-border);
   border-radius: var(--r-lg);
-  background: var(--popover);
-  box-shadow: var(--shadow-pop);
+  background: var(--menu-bg);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: var(--menu-shadow);
   animation: pop-in var(--dur) var(--ease-out);
 }
 
@@ -4266,10 +4818,10 @@ button.field-input:hover {
 /* ───────────────────────── Press feedback ───────────────────────── */
 
 /* Buttons give a little under the pointer, so every click feels answered. */
-.app-shell :is(.primary-button, .text-button, .topbar-button, .icon-button, .icon-tab, .segment, .zoom, .settings-button, .theme-option, .tool-button) {
+.app-shell :is(.primary-button, .text-button, .topbar-button, .section-button, .icon-button, .icon-tab, .segment, .zoom-menu-button, .settings-button, .theme-option, .tool-button) {
   transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
 }
-.app-shell :is(.primary-button, .text-button, .topbar-button, .icon-button, .icon-tab, .segment, .zoom, .settings-button, .theme-option, .tool-button):not(:disabled):active {
+.app-shell :is(.primary-button, .text-button, .topbar-button, .section-button, .icon-button, .icon-tab, .segment, .zoom-menu-button, .settings-button, .theme-option, .tool-button):not(:disabled):active {
   scale: 0.96;
 }
 

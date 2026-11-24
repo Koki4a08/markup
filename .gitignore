@@ -10,3 +10,10 @@ PRODUCT.md
 # Local agent guidance: kept out of commits
 CLAUDE.md
 dist-firefox
+
+# Secrets: keep real keys out of git; .env.example lists the names
+.env*
+!.env.example
+
+# Supabase CLI local state
+supabase/.temp

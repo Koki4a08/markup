@@ -7,6 +7,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 export class IdSetStore {
   private ids: ReadonlySet<string>;
   private listeners = new Map<string, Set<() => void>>();
+  private anyListeners = new Set<() => void>();
 
   constructor(initial: Iterable<string> = []) {
     this.ids = new Set(initial);
@@ -21,6 +22,16 @@ export class IdSetStore {
     return this.ids;
   }
 
+  size(): number {
+    return this.ids.size;
+  }
+
+  /** Called after any replace that changed membership. */
+  subscribeAny = (fn: () => void): (() => void) => {
+    this.anyListeners.add(fn);
+    return () => this.anyListeners.delete(fn);
+  };
+
   replace(next: Iterable<string>): void {
     const prev = this.ids;
     const set = new Set(next);
@@ -32,6 +43,7 @@ export class IdSetStore {
       const fns = this.listeners.get(id);
       if (fns) for (const fn of [...fns]) fn();
     }
+    if (changed.length) for (const fn of [...this.anyListeners]) fn();
   }
 
   toggle(id: string): void {

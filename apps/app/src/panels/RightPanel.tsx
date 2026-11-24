@@ -13,7 +13,21 @@ type Tab = 'design' | 'theme' | 'comments' | 'history';
  * Right panel: Design (the selection's styles) and Theme (the selection's colours and type, and the file's tokens) as the main switch;
  * Comments and History sit beside it as icon tabs.
  */
-export const RightPanel = memo(function RightPanel({ comments, resizer, pageRootId = '' }: { comments: CommentsPanelProps; resizer?: ReactNode; pageRootId?: string }) {
+export const RightPanel = memo(function RightPanel({
+  comments,
+  resizer,
+  pageRootId = '',
+  top,
+  noSelection,
+}: {
+  comments: CommentsPanelProps;
+  resizer?: ReactNode;
+  pageRootId?: string;
+  /** Above the tabs: agent status and zoom. */
+  top?: ReactNode;
+  /** Design tab content while nothing is selected. */
+  noSelection?: ReactNode;
+}) {
   const [tab, setTab] = useState<Tab>('design');
   const open = useThreads().filter((t) => t.status === 'open').length;
   const tabProps = (t: Tab) => ({ role: 'tab' as const, 'aria-selected': tab === t, onClick: () => setTab(t) });
@@ -21,6 +35,7 @@ export const RightPanel = memo(function RightPanel({ comments, resizer, pageRoot
   return (
     <aside className="panel inspector" aria-label="Design, theme, comments and history">
       {resizer}
+      {top}
       <div className="panel-tabs" role="tablist">
         <div className="segmented">
           <SegmentThumb />
@@ -44,7 +59,7 @@ export const RightPanel = memo(function RightPanel({ comments, resizer, pageRoot
         </button>
       </div>
       <div role="tabpanel" className="panel-body" key={tab}>
-        {tab === 'design' ? <Inspector /> : tab === 'theme' ? <ThemePanel pageRootId={pageRootId} /> : tab === 'comments' ? <CommentsPanel {...comments} /> : <AgentLog />}
+        {tab === 'design' ? <Inspector empty={noSelection} /> : tab === 'theme' ? <ThemePanel pageRootId={pageRootId} /> : tab === 'comments' ? <CommentsPanel {...comments} /> : <AgentLog />}
       </div>
     </aside>
   );
