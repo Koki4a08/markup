@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { StyleValue } from '@markup/doc';
 import { endPreview } from '../../canvas/preview';
 import { SegmentThumb } from '../../ui/SegmentThumb';
+import { ColorPicker } from '../ColorPicker';
 
 export const MIXED = Symbol('mixed');
 export type FieldValue = StyleValue | undefined | typeof MIXED;
@@ -214,16 +215,7 @@ export function SegmentedField({ label, value, options, onChange, span = 2 }: { 
   );
 }
 
-/** #rgb / #rrggbb → #rrggbb for the native picker; anything else has no picker value. */
-function toHex(v: FieldValue): string | null {
-  if (typeof v !== 'string') return null;
-  const s = v.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(s)) return s;
-  if (/^#[0-9a-f]{3}$/.test(s)) return `#${[...s.slice(1)].map((c) => c + c).join('')}`;
-  return null;
-}
-
-/** Colour value with a swatch that opens the system colour picker; the text field takes any CSS colour. */
+/** Colour value with a swatch that opens the colour picker; the text field takes any CSS colour. */
 export function ColorField({
   label,
   value,
@@ -231,6 +223,8 @@ export function ColorField({
   onPreview,
   span = 2,
   resolve,
+  placeholder = 'None',
+  fallback,
 }: {
   label: string;
   value: FieldValue;
@@ -238,43 +232,53 @@ export function ColorField({
   onPreview?(value: string): void;
   span?: 1 | 2;
   resolve?: (value: string) => string;
+  placeholder?: string;
+  /** The colour shown (and picked from) while the value is unset, when unset still paints something. */
+  fallback?: string;
 }) {
   // A token reference (var(--brand)) shows the colour it resolves to.
-  const swatch = value === MIXED || value === undefined ? 'transparent' : (resolve?.(String(value)) ?? String(value));
+  const unset = value === MIXED || value === undefined || value === '';
+  const swatch = unset ? fallback || 'transparent' : (resolve?.(String(value)) ?? String(value));
   const empty = swatch === 'transparent';
   const [picking, setPicking] = useState<string | null>(null);
-  const pickerRef = useRef<HTMLInputElement>(null);
-  const commitRef = useRef(onCommit);
-  commitRef.current = onCommit;
-  // `input` previews on the swatch while the picker is open; the native `change` (picker closed) commits once.
-  useEffect(() => {
-    const el = pickerRef.current;
-    if (!el) return;
-    const onChange = () => {
-      endPreview();
-      commitRef.current(el.value);
-      setPicking(null);
-    };
-    el.addEventListener('change', onChange);
-    return () => el.removeEventListener('change', onChange);
-  }, []);
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
   return (
     <div className={`color-field ${span === 2 ? 'is-wide' : ''}`}>
-      <label className={`swatch ${empty ? 'is-empty' : ''}`} data-tip="Pick a colour">
+      <button
+        ref={button}
+        type="button"
+        className={`swatch ${empty && !picking ? 'is-empty' : ''} ${open ? 'is-open' : ''}`}
+        aria-label={`${label} picker`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        data-tip={open ? undefined : 'Pick a colour'}
+        onClick={() => setOpen((o) => !o)}
+      >
         <span className="swatch-fill" style={{ background: picking ?? swatch }} />
-        <input
-          ref={pickerRef}
-          type="color"
-          className="sr-only"
-          aria-label={`${label} picker`}
-          value={picking ?? toHex(swatch) ?? '#000000'}
-          onChange={(e) => {
-            setPicking(e.target.value);
-            onPreview?.(e.target.value);
+      </button>
+      {open && button.current && (
+        <ColorPicker
+          anchor={button.current}
+          label={label}
+          value={empty ? null : swatch}
+          onPreview={(v) => {
+            setPicking(v);
+            onPreview?.(v);
+          }}
+          onCommit={(v) => {
+            endPreview();
+            setPicking(null);
+            onCommit(v);
+          }}
+          onClose={() => {
+            endPreview();
+            setPicking(null);
+            setOpen(false);
           }}
         />
-      </label>
-      <TextField label={label} value={value} onCommit={onCommit} onPreview={onPreview} placeholder="None" hideLabel />
+      )}
+      <TextField label={label} value={value} onCommit={onCommit} onPreview={onPreview} placeholder={placeholder} hideLabel />
     </div>
   );
 }

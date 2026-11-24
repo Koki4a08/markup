@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { ColorPicker } from './ColorPicker';
 import type { Token } from '@markup/doc';
 import { icons } from './icons';
-import { formatColor, hexLabel, parseColor, type RGBA } from './color';
+import { colorKey, formatColor, hexLabel, parseColor, type RGBA } from './color';
 import { previewColor, replaceColor, type ColorGroup } from './selectionTheme';
 import { endPreview } from '../canvas/preview';
 import { useDoc } from '../store/DocProvider';
@@ -103,8 +104,9 @@ function ColorRow({ group }: { group: ColorGroup }) {
       <div className="sel-color-chip">
         <Picker color={color} label={`${label} picker`} onPreview={(c) => {
             if (!token) setHex(hexLabel(c));
-            preview({ ...c, a: color.a });
-          }} onPick={(c) => apply({ ...c, a: color.a })} />
+            setAlpha(String(Math.round(c.a * 100)));
+            preview(c);
+          }} onPick={(c) => apply(c)} />
         {token ? (
           <span className="sel-color-token" data-tip={`Token ${token}`}>
             {label}
@@ -141,38 +143,45 @@ function ColorRow({ group }: { group: ColorGroup }) {
   );
 }
 
-/** Swatch that opens the system picker: it previews while dragging and commits once, when the picker closes. */
+/**
+ * Swatch that opens the colour picker. A changed colour moves this row to another group, so the picker
+ * previews every change and commits the last one when it closes.
+ */
 function Picker({ color, label, onPick, onPreview }: { color: RGBA; label: string; onPick(c: RGBA): void; onPreview(c: RGBA): void }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const pick = useRef(onPick);
-  pick.current = onPick;
+  const [open, setOpen] = useState(false);
   const [live, setLive] = useState<string | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const onChange = () => {
-      const c = parseColor(el.value);
-      setLive(null);
-      if (c) pick.current(c);
-    };
-    el.addEventListener('change', onChange);
-    return () => el.removeEventListener('change', onChange);
-  }, []);
+  const pending = useRef<RGBA | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const show = (css: string) => {
+    const c = parseColor(css);
+    if (!c) return;
+    pending.current = c;
+    setLive(css);
+    onPreview(c);
+  };
+  const close = () => {
+    const c = pending.current;
+    pending.current = null;
+    setOpen(false);
+    setLive(null);
+    if (c && colorKey(c) !== colorKey(color)) onPick(c);
+    else endPreview();
+  };
   return (
-    <label className="swatch sel-color-swatch" data-tip="Pick a colour">
-      <span className="swatch-fill" style={{ background: live ?? formatColor(color) }} />
-      <input
-        ref={ref}
-        type="color"
-        className="sr-only"
+    <>
+      <button
+        ref={button}
+        type="button"
+        className={`swatch sel-color-swatch ${open ? 'is-open' : ''}`}
         aria-label={label}
-        value={live ?? `#${hexLabel(color).toLowerCase()}`}
-        onChange={(e) => {
-          setLive(e.target.value);
-          const c = parseColor(e.target.value);
-          if (c) onPreview(c);
-        }}
-      />
-    </label>
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        data-tip={open ? undefined : 'Pick a colour'}
+        onClick={() => (open ? close() : setOpen(true))}
+      >
+        <span className="swatch-fill" style={{ background: live ?? formatColor(color) }} />
+      </button>
+      {open && button.current && <ColorPicker anchor={button.current} label={label} value={formatColor(color)} p3={false} onPreview={show} onCommit={show} onClose={close} />}
+    </>
   );
 }

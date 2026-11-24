@@ -7,6 +7,7 @@ import { DeferredNodeView } from './NodeView';
 import { nodeElementIn } from './registry';
 import { useStore, useTick, type TickStore, type ViewportStore } from './store';
 import { attachNavigation } from './navigation';
+import { useLiveStyles } from './preview';
 import { worldToScreen, type Viewport } from './viewport';
 import { useChildren, useNode, useWorking } from '../store/hooks';
 import { useDoc } from '../store/DocProvider';
@@ -121,6 +122,7 @@ export function Canvas({ rootId, viewport: viewportStore, overlay, onPointerDown
       onPointerUp={endPan}
       onPointerCancel={endPan}
     >
+      <PageBackground rootId={rootId} canvasRef={ref} />
       <div className="canvas-backdrop" aria-hidden>
         {artboards.map((id) => (
           <ArtboardBackdrop key={id} id={id} viewport={viewport} rect={rects.get(id) ?? null} />
@@ -351,4 +353,20 @@ export function controlOwnsKey(target: EventTarget | null, e: { key: string; met
   if (!el || typeof el.closest !== 'function') return false;
   if (el.closest('.comment-popover, .comments-panel')) return true;
   return !!el.closest(CONTROL) && !e.metaKey && !e.ctrlKey && !e.altKey && OWN_KEYS.has(e.key);
+}
+
+/**
+ * The page's own background (its root's background colour), painted on the canvas element; unset keeps
+ * the editor theme's canvas colour. A live preview from the page colour field wins while it runs.
+ * Its own component, so previews re-render this and not the canvas.
+ */
+function PageBackground({ rootId, canvasRef }: { rootId: string; canvasRef: RefObject<HTMLDivElement | null> }) {
+  const stored = useNode(rootId)?.styles.backgroundColor;
+  const live = useLiveStyles()[rootId];
+  const value = live && 'backgroundColor' in live ? live.backgroundColor : stored;
+  useLayoutEffect(() => {
+    const el = canvasRef.current;
+    if (el) el.style.background = typeof value === 'string' ? value : '';
+  }, [value, canvasRef]);
+  return null;
 }

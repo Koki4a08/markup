@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { resolveTokenValue, type MarkupNode, type Styles, type StyleValue } from '@markup/doc';
 import { glyphs, icons } from './icons';
 import { common, MIXED, Section, SegmentedField, SelectField, type FieldValue } from './fields/fields';
@@ -67,8 +67,11 @@ function sizingOf(node: MarkupNode, parent: MarkupNode | undefined, dim: 'width'
   return 'fixed';
 }
 
-/** No props: memoized so the right panel's own re-renders (tab badge, resizer) skip it. */
-export const Inspector = memo(function Inspector() {
+/**
+ * Memoized so the right panel's own re-renders (tab badge, resizer) skip it. `empty` replaces the
+ * no-selection hint (the editor shows page settings there).
+ */
+export const Inspector = memo(function Inspector({ empty }: { empty?: ReactNode }) {
   const { doc, actor } = useDoc();
   const selection = useSelection();
   const nodes = useNodes(selection.ids);
@@ -78,6 +81,7 @@ export const Inspector = memo(function Inspector() {
   const tokens = useDeep(doc.ydoc.getArray('tokens'), () => doc.getTokens(), [doc]);
   const theme = useSubtreeTheme(selection.ids, tokens);
   if (nodes.length === 0) {
+    if (empty) return empty;
     return (
       <div className="inspector-body">
         <div className="panel-empty">

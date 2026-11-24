@@ -79,4 +79,29 @@ describe('heavy pages', () => {
     expect(container.querySelectorAll('.layer-row').length).toBe(3 + 50);
     expect(container.querySelector('.layer-row.is-selected')?.textContent).toContain('Row 7');
   });
+
+  it('expands every frame and collapses them again from the layers heading', () => {
+    const doc = new MarkupDoc();
+    const page = doc.pages()[0]!;
+    if (page.type !== 'page') throw new Error('unreachable');
+    const inner = { type: 'frame', name: 'Inner', children: rows(2) } as NodeSpec;
+    doc.insertNodes(human, page.rootId, [
+      { type: 'frame', name: 'Board A', styles: { width: 200, height: 200 }, children: [inner, ...rows(1)] } as NodeSpec,
+      { type: 'frame', name: 'Board B', styles: { width: 200, height: 200 }, children: rows(3) } as NodeSpec,
+    ]);
+    const { container, getByRole } = render(
+      <DocProvider doc={doc} actor={human}>
+        <SelectionProvider>
+          <LayersPanel activePageId={page.id} onPage={() => undefined} renamingId={null} onRenameDone={() => undefined} collapseSignal={0} />
+        </SelectionProvider>
+      </DocProvider>,
+    );
+    expect(container.querySelectorAll('.layer-row').length).toBe(2);
+    act(() => getByRole('button', { name: 'Expand all layers' }).click());
+    // Both boards, Inner and its 2 rows, Board A's row, Board B's 3 rows.
+    expect(container.querySelectorAll('.layer-row').length).toBe(2 + 1 + 2 + 1 + 3);
+    act(() => getByRole('button', { name: 'Collapse all layers' }).click());
+    expect(container.querySelectorAll('.layer-row').length).toBe(2);
+    expect(getByRole('button', { name: 'Expand all layers' })).toBeTruthy();
+  });
 });
