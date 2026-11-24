@@ -164,7 +164,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: packages/mcp/dist/release
-        run: gh release upload "$TAG" markup-cli-*.gz markup-cli-*.zip --clobber
+        # Only Windows binaries are zipped, so a runner may have no .zip: skip globs that match nothing.
+        run: |
+          shopt -s nullglob
+          gh release upload "$TAG" markup-cli-*.gz markup-cli-*.zip --clobber
 
   extension:
     name: Browser extension
