@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "allowImportingTsExtensions": true, "types": ["node"] },
+  "include": ["_shared", "_tests", "send-email/handler.ts", "vitest.config.ts"]
+}
