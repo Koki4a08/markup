@@ -1,12 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c1c21"/><stop offset="1" stop-color="#0a0a0b"/></linearGradient>
-    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".18"/><stop offset=".5" stop-color="#fff" stop-opacity=".04"/><stop offset="1" stop-color="#fff" stop-opacity=".08"/></linearGradient>
-  </defs>
-  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
-  <rect x="6" y="6" width="1012" height="1012" rx="222" fill="none" stroke="url(#rim)" stroke-width="12"/>
-  <g transform="translate(512 512) scale(.86) translate(-510 -512)">
-    <path d="M583.0,500.3 L686.5,264.8 L821.1,264.8 L764.0,426.6 L844.0,760.0 L719.0,760.0 L674.5,588.6 L595.2,555.2Z" fill="#7f70ff" stroke="#7f70ff" stroke-width="50.4" stroke-linejoin="round"/>
-    <path d="M176.7,760.0 L323.2,264.8 L469.7,264.8 L448.2,351.3 L594.8,632.2 L470.3,632.2 L388.4,490.2 L302.7,760.0Z" fill="#fafafa" stroke="#fafafa" stroke-width="50.4" stroke-linejoin="round"/>
-  </g>
+  <rect width="1024" height="1024" rx="200" fill="#2A17B0"/>
+  <path d="M583.0,500.3 L686.5,264.8 L821.1,264.8 L764.0,426.6 L844.0,760.0 L719.0,760.0 L674.5,588.6 L595.2,555.2Z" fill="#B3ACFA" stroke="#B3ACFA" stroke-width="50.4" stroke-linejoin="round"/>
+  <path d="M176.7,760.0 L323.2,264.8 L469.7,264.8 L448.2,351.3 L594.8,632.2 L470.3,632.2 L388.4,490.2 L302.7,760.0Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="50.4" stroke-linejoin="round"/>
 </svg>
