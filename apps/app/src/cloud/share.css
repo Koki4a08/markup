@@ -1,0 +1,368 @@
+/* Share: the button in the top of the right panel and its menu of view-only links. */
+
+.panel-top-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.share-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 1px 2px rgba(0, 0, 0, 0.3);
+  cursor: default;
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.share-button:hover,
+.share-button.is-open {
+  background: var(--accent-fill-hover);
+}
+
+.share-button:active {
+  background: var(--accent-fill-active);
+}
+
+.share-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.share-menu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  flex-direction: column;
+  border: 1px solid var(--menu-border);
+  border-radius: var(--r-lg);
+  background: var(--popover);
+  box-shadow: var(--menu-shadow);
+  color: var(--text);
+  font-size: 12px;
+  transform-origin: top right;
+  animation: pop-in var(--dur) var(--ease-out);
+}
+
+.share-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px 10px;
+}
+
+.share-title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.share-sub,
+.share-note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 16px;
+}
+
+.share-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.share-section.is-tight {
+  padding: 4px 8px 6px;
+  border-top: 0;
+}
+
+.share-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-2);
+}
+
+.share-status svg,
+.share-preview svg {
+  width: 13px;
+  height: 13px;
+}
+
+.share-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-label {
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.share-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.share-wide {
+  flex: 1;
+}
+
+.share-wide:disabled {
+  opacity: 0.75;
+}
+
+.share-skeleton {
+  height: 44px;
+  border-radius: var(--r);
+  background: linear-gradient(90deg, var(--hover) 0%, var(--hover-strong) 50%, var(--hover) 100%) 0 0 / 200% 100%;
+  animation: share-shimmer 1.4s var(--ease-in-out) infinite;
+}
+
+@keyframes share-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.share-links {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 6px;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+.share-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 8px;
+  animation: share-row-in var(--dur-slow) var(--ease-out);
+}
+
+.share-link:hover {
+  background: var(--hover);
+}
+
+@keyframes share-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+    filter: blur(2px);
+  }
+}
+
+.share-link-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 16px;
+  justify-content: center;
+  color: var(--text-3);
+}
+
+.share-link-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.share-url {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-family: var(--mono-font);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  outline: none;
+}
+
+.share-url.is-muted {
+  color: var(--text-3);
+  font-family: inherit;
+}
+
+.share-link-meta {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.share-copy,
+.share-off {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: default;
+  transition: background-color var(--dur-fast) ease-out, color var(--dur-fast) ease-out, box-shadow var(--dur-fast) ease-out;
+}
+
+.share-copy {
+  min-width: 70px;
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--border-input);
+  color: var(--text);
+}
+
+.share-copy:hover {
+  background: var(--raised-hover);
+}
+
+.share-copy.is-done {
+  color: var(--success);
+}
+
+.share-copy svg {
+  width: 13px;
+  height: 13px;
+}
+
+.share-off {
+  min-width: 58px;
+  background: transparent;
+  color: var(--text-3);
+}
+
+.share-off:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.share-off svg {
+  width: 13px;
+  height: 13px;
+}
+
+:is(.share-copy, .share-off, .share-manage, .share-add):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.share-add {
+  align-self: flex-start;
+}
+
+.share-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 14px 10px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.share-preview .account-link {
+  margin-left: auto;
+}
+
+.share-preview.is-failed {
+  color: var(--danger);
+}
+
+.share-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin: 0 3.5px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.share-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0 14px 10px;
+  padding: 7px 8px;
+  border-radius: var(--r);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.share-error svg {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  margin-top: 1px;
+}
+
+.share-foot {
+  display: flex;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+}
+
+.share-manage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--r);
+  color: var(--text-2);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color var(--dur-fast) ease-out, color var(--dur-fast) ease-out;
+}
+
+.share-manage:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.share-manage svg {
+  width: 12px;
+  height: 12px;
+  color: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share-menu,
+  .share-link,
+  .share-skeleton {
+    animation: none;
+  }
+}

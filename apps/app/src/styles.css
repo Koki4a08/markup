@@ -1,6 +1,6 @@
 /*
  * Markup editor theme: graphite panels on a near-black chrome ground, a lighter canvas so artboards
- * read as the only bright thing, blue for selection and focus, violet reserved for agent presence.
+ * read as the only bright thing, the site's indigo for selection and focus, violet reserved for agent presence.
  *
  * Design baseline: body keeps the font, colour, colour scheme and scrollbars that design content
  * inherits (the canvas world, export hosts and the computed-style probes all hang off it). The UI
@@ -16,18 +16,18 @@
   --mono-font: 'Geist Mono Variable', ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
 
   /* Grounds, darkest to lightest: neutral graphite, lifted off pure black so panels read as surfaces. */
-  --chrome: #141416;
-  --panel: #1b1b1e;
-  --popover: #222225;
+  --chrome: #0e0e11;
+  --panel: #121215;
+  --popover: #18181c;
   /* Menus, dropdowns and the select pickers: translucent vibrancy, like a native macOS menu, with a neutral hover. */
-  --menu-bg: rgb(34 34 38 / 0.72);
+  --menu-bg: rgb(24 24 28 / 0.78);
   --menu-border: rgb(255 255 255 / 0.1);
   --menu-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.6), 0 10px 32px -4px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.25);
   --menu-hover: rgb(var(--ink) / 0.08);
-  --raised: #28282c;
-  --raised-hover: #2f2f34;
-  --raised-active: #37373c;
-  --canvas: #2a2a2e;
+  --raised: #1f1f23;
+  --raised-hover: #27272a;
+  --raised-active: #2e2e33;
+  --canvas: #1e1e22;
 
   /* Lines */
   --border: rgb(var(--ink) / 0.07);
@@ -37,22 +37,22 @@
   --hover-strong: rgb(var(--ink) / 0.07);
 
   /* Text */
-  --text: #ededef;
+  --text: #fafafa;
   --text-2: #a1a1aa;
   --text-3: #8b8b94;
   --text-on-accent: #ffffff;
 
   /* Selection and focus */
-  --accent: #3b82f6;
-  --accent-line: #4c8dff;
-  --accent-fill: #2f6fe8;
-  --accent-fill-hover: #2866dc;
-  --accent-fill-active: #2259c4;
-  --accent-text: #8ab4ff;
-  --accent-soft: rgba(59, 130, 246, 0.17);
-  --accent-softer: rgba(59, 130, 246, 0.09);
+  --accent: #7f70ff;
+  --accent-line: #7f70ff;
+  --accent-fill: #5b47ff;
+  --accent-fill-hover: #5240f2;
+  --accent-fill-active: #4734d9;
+  --accent-text: #a49bff;
+  --accent-soft: rgba(127, 112, 255, 0.17);
+  --accent-softer: rgba(127, 112, 255, 0.09);
   --focus: var(--accent-line);
-  --focus-soft: rgba(76, 141, 255, 0.28);
+  --focus-soft: rgba(127, 112, 255, 0.28);
 
   /* Agents */
   --agent: #8b5cf6;
@@ -61,11 +61,11 @@
   --agent-soft: rgba(139, 92, 246, 0.16);
 
   /* State */
-  --success: #34d399;
-  --success-soft: rgba(52, 211, 153, 0.1);
-  --danger: #f87171;
+  --success: #3fcf96;
+  --success-soft: rgba(63, 207, 150, 0.1);
+  --danger: #ff7275;
   --danger-fill: #ef4444;
-  --danger-soft: rgba(248, 113, 113, 0.1);
+  --danger-soft: rgba(255, 114, 117, 0.1);
 
   --r-sm: 4px;
   --r: 6px;
@@ -82,8 +82,8 @@
 
   /* Theme switch (Settings → Appearance): the overlay ink, deeper grounds and the UI's colour scheme. */
   --ink: 255 255 255;
-  --ground: #18181a;
-  --tooltip-bg: #2a2a2e;
+  --ground: #101013;
+  --tooltip-bg: #1f1f23;
   --ui-scheme: dark;
   /* Strongest text: selected rows and the active tool. */
   --text-strong: #ffffff;
@@ -94,31 +94,33 @@
 /* Light theme: the same structure on white panels and a soft grey canvas. */
 :root[data-theme='light'] {
   --ink: 0 0 0;
-  --chrome: #ebebed;
+  --chrome: #f4f4f5;
   --panel: #ffffff;
   --popover: #ffffff;
   --menu-bg: rgb(246 246 248 / 0.78);
   --menu-border: rgb(0 0 0 / 0.08);
   --menu-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.7), 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 10px 32px -4px rgb(0 0 0 / 0.18), 0 2px 6px rgb(0 0 0 / 0.06);
-  --raised: #f3f3f5;
-  --raised-hover: #ebebee;
-  --raised-active: #e3e3e7;
+  --raised: #f4f4f5;
+  --raised-hover: #ededf0;
+  --raised-active: #e4e4e7;
   --canvas: #e4e4e7;
-  --ground: #f5f5f6;
+  --ground: #fafafa;
   --tooltip-bg: #ffffff;
-  --text: #18181b;
+  --text: #0a0a0b;
   --text-2: #52525b;
   --text-3: #6b6b73;
-  --accent-text: #2563eb;
-  --accent-soft: rgba(59, 130, 246, 0.14);
-  --accent-softer: rgba(59, 130, 246, 0.08);
-  --focus-soft: rgba(59, 130, 246, 0.22);
+  --accent: #5b47ff;
+  --accent-line: #5b47ff;
+  --accent-text: #5b47ff;
+  --accent-soft: rgba(91, 71, 255, 0.12);
+  --accent-softer: rgba(91, 71, 255, 0.07);
+  --focus-soft: rgba(91, 71, 255, 0.22);
   --agent-text: #6d28d9;
   --agent-soft: rgba(124, 58, 237, 0.12);
-  --success: #059669;
-  --success-soft: rgba(5, 150, 105, 0.1);
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.08);
+  --success: #12805a;
+  --success-soft: rgba(18, 128, 90, 0.1);
+  --danger: #d33a40;
+  --danger-soft: rgba(211, 58, 64, 0.08);
   --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.06), 0 16px 40px -10px rgba(0, 0, 0, 0.2);
   --shadow-artboard: 0 1px 2px rgba(0, 0, 0, 0.08), 0 8px 24px -8px rgba(0, 0, 0, 0.2);
   --ui-scheme: light;
@@ -694,14 +696,14 @@ html.is-resizing-panel * {
   height: 54px;
   overflow: hidden;
   border-radius: 5px;
-  --p-chrome: #141416;
-  --p-panel: #1b1b1e;
-  --p-canvas: #2a2a2e;
+  --p-chrome: #0e0e11;
+  --p-panel: #121215;
+  --p-canvas: #1e1e22;
   box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.08);
 }
 
 .theme-preview.is-light {
-  --p-chrome: #ebebed;
+  --p-chrome: #f4f4f5;
   --p-panel: #ffffff;
   --p-canvas: #e4e4e7;
 }
@@ -731,15 +733,15 @@ html.is-resizing-panel * {
 
 /* System: half light, half dark. */
 .theme-preview.is-system .theme-preview-bar {
-  background: linear-gradient(135deg, #ebebed 50%, #141416 50%);
+  background: linear-gradient(135deg, #f4f4f5 50%, #0e0e11 50%);
 }
 
 .theme-preview.is-system .theme-preview-panel {
-  background: linear-gradient(135deg, #ffffff 50%, #1b1b1e 50%);
+  background: linear-gradient(135deg, #ffffff 50%, #121215 50%);
 }
 
 .theme-preview.is-system .theme-preview-canvas {
-  background: linear-gradient(135deg, #e4e4e7 50%, #2a2a2e 50%);
+  background: linear-gradient(135deg, #e4e4e7 50%, #1e1e22 50%);
 }
 
 /* ───────────────────────── Editor: top bar ───────────────────────── */

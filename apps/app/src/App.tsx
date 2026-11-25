@@ -9,6 +9,7 @@ import { startWhatsNew } from './desktop/whatsNew';
 import { startAccount } from './cloud/account';
 import { startUsage } from './cloud/usage';
 import { startCloudSync } from './cloud/sync';
+import { startShareSync } from './cloud/share';
 import { tabShortcut, tabTarget, type TabCommand } from './desktop/tabShortcuts';
 import { inTauri } from './export/clipboard';
 import { TooltipLayer } from './ui/Tooltip';
@@ -59,6 +60,8 @@ export function App() {
   useEffect(() => (workspace ? startUsage(workspace) : undefined), [workspace]);
   // Cloud backup and sync of the files the user keeps in the cloud, while signed in.
   useEffect(() => (workspace ? startCloudSync(workspace, { read: readStoredState, merge: mergeStoredState }) : undefined), [workspace]);
+  // View-only share links: keeps the shared view of files with a link on up to date, while signed in.
+  useEffect(() => (workspace ? startShareSync(workspace) : undefined), [workspace]);
 
   // The desktop window opens hidden; it appears once there is something real to show.
   const ready = !!workspace || !!error;

@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties 
 import { useZoomPercent, type ViewportStore } from '../canvas/store';
 import { isMacPlatform, shortcutLabel, type Command } from '../commands/keyboard';
 import { useDismiss } from '../ui/useDismiss';
+import { ShareButton } from '../cloud/ShareButton';
 
 type ZoomCommand = Extract<Command, 'zoomIn' | 'zoomOut' | 'zoomToFit' | 'zoomTo100'>;
 
@@ -12,7 +13,7 @@ const ZOOM_ITEMS: { command: ZoomCommand; label: string }[] = [
   { command: 'zoomTo100', label: 'Zoom to 100%' },
 ];
 
-/** Top of the right panel: whether agents can reach this file, and the zoom level with its menu. */
+/** Top of the right panel: whether agents can reach this file, Share, and the zoom level with its menu. */
 export const PanelTop = memo(function PanelTop({ bridgeStatus, viewport, onZoom }: { bridgeStatus: string; viewport: ViewportStore; onZoom(command: ZoomCommand): void }) {
   const connected = bridgeStatus === 'connected';
   return (
@@ -20,7 +21,10 @@ export const PanelTop = memo(function PanelTop({ bridgeStatus, viewport, onZoom 
       <span className={`bridge-status is-${bridgeStatus}`} data-tip={connected ? 'Agents can reach this file through markup mcp' : 'Run markup mcp from an agent to connect'}>
         {connected ? 'Agents connected' : bridgeStatus === 'connecting' ? 'Connecting' : 'Agents offline'}
       </span>
-      <ZoomMenu viewport={viewport} onZoom={onZoom} />
+      <div className="panel-top-actions">
+        <ShareButton />
+        <ZoomMenu viewport={viewport} onZoom={onZoom} />
+      </div>
     </div>
   );
 });

@@ -30,11 +30,13 @@ import {
   FileTextIcon,
   FolderIcon,
   GearSixIcon,
+  GlobeSimpleIcon,
   HandIcon,
   HashStraightIcon,
   HexagonIcon,
   ImageIcon,
   ListIcon,
+  LinkSimpleIcon,
   LockIcon,
   LockOpenIcon,
   MagnifyingGlassIcon,
@@ -132,6 +134,8 @@ export const icons = {
   cloudSynced: i(CloudCheckIcon, 'fill', 14),
   cloudSyncing: i(CloudArrowUpIcon, 'fill', 14),
   cloudOff: i(CloudSlashIcon, 'fill', 14),
+  link: i(LinkSimpleIcon, 'bold', 14),
+  globe: i(GlobeSimpleIcon, 'fill', 14),
 };
 
 /** Small glyphs for inspector field prefixes, drawn on a 12px grid to sit inside 28px inputs. */
