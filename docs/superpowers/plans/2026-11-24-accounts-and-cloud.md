@@ -9,7 +9,7 @@ Plan for optional accounts shared by the website, the editor (web + desktop) and
 - The only limit is cloud storage: **500 MB free**, **20 GB for €9.99/month**.
 - Hitting the limit never blocks editing and never deletes data. New uploads pause and the file shows "Local only". After a cancelled subscription the cloud goes read-only until the user is under 500 MB again; everything stays downloadable.
 - One Supabase project in an EU region (Frankfurt) for GDPR.
-- `supabase/` (migrations + Edge Functions) lives in this repo, public, so the backend stays self-hostable.
+- `supabase/` (migrations + Edge Functions) is private: kept out of the public repo (gitignored) and deployed from the maintainer's machine.
 - Payments: Paddle as Merchant of Record so it handles EU VAT. (Recommended; not confirmed yet. Stripe + Stripe Tax is the alternative.)
 
 ## Secrets
@@ -76,7 +76,7 @@ files/{userId}/library.bin
 
 - Website: `/login/` and `/signup/` (email + password, magic link, GitHub, password reset). Other pages are not decided yet.
 - Web editor: same Supabase client, normal redirect.
-- Desktop: "Sign in" opens the system browser at `markup.here/login?client=desktop` with PKCE; the site redirects to `markup://auth/callback?code=…`; the app exchanges the code. Needs `tauri-plugin-deep-link` (not installed yet); `tauri-plugin-single-instance` forwards the link to the running window. Tokens go in the OS keychain, not localStorage.
+- Desktop (built): "Sign in" opens `markup.here/login/?client=desktop&challenge=…&state=…`. A Supabase PKCE code from the site's login cannot be exchanged by the app (its verifier lives in the browser), and passing the browser's tokens would share one refresh token between two clients. So the site asks the `desktop-auth` Edge Function for a one-time code bound to the app's challenge, opens `markup://auth/callback?code=…&state=…`, and the app trades code + verifier for a magic-link token hash and calls `verifyOtp`: a session of its own. Details in the private backend's README. The session is AES-GCM encrypted in the webview's storage with the key in the OS credential store (Credential Manager caps a secret at 2.5 KB, too small for a session).
 - Extension: `chrome.identity.launchWebAuthFlow` with PKCE; add `https://<extension-id>.chromiumapp.org/` to the Supabase redirect allow list.
 
 ### Payments
@@ -117,7 +117,7 @@ Metrics (per day):
 ## Milestones
 
 - [ ] **M1**: Supabase project (EU), `supabase/` migrations + RLS (written), `.gitignore` (done) + push protection, website `/login/` and `/signup/` (written), privacy page update (written)
-- [ ] **M2**: Sign-in in the editor (web + Tauri deep link), settings sync
+- [ ] **M2**: Sign-in in the editor (desktop done: deep link handoff, encrypted session, account button; web editor and settings sync still open)
 - [ ] **M3**: Cloud backup and sync, quota, storage usage UI
 - [ ] **M4**: Personal usage stats (local rollups, upload)
 - [ ] **M5**: Share links + web viewer (view, comment)

@@ -78,6 +78,7 @@ export class Workspace {
   private disposed = false;
   private readonly listeners = new Set<() => void>();
   private readonly revealListeners = new Set<(fileId: string) => void>();
+  private readonly createdListeners = new Set<(fileId: string) => void>();
 
   constructor(opts: WorkspaceOptions) {
     this.opts = opts;
@@ -229,6 +230,7 @@ export class Workspace {
       const doc = await this.opts.createDoc(name, source);
       const item = this.library.addFile({ id: doc.fileId, name, parentId: opts.parentId });
       this.opts.releaseDoc?.(doc);
+      for (const fn of [...this.createdListeners]) fn(item.id);
       return { ...item, url: fileUrl(item.id) };
     } finally {
       if (temporary && source) this.opts.releaseDoc?.(source);
@@ -244,11 +246,14 @@ export class Workspace {
     return item;
   }
 
-  /** 'change': tabs, names or the active tab changed. 'reveal': a file was asked to come to the foreground. */
+  /**
+   * 'change': tabs, names or the active tab changed. 'reveal': a file was asked to come to the foreground.
+   * 'created': a new file (or a copy) was added, by the user or an agent.
+   */
   on(event: 'change', fn: () => void): () => void;
-  on(event: 'reveal', fn: (fileId: string) => void): () => void;
-  on(event: 'change' | 'reveal', fn: (fileId: string) => void): () => void {
-    const set: Set<(fileId: string) => void> = event === 'reveal' ? this.revealListeners : this.listeners;
+  on(event: 'reveal' | 'created', fn: (fileId: string) => void): () => void;
+  on(event: 'change' | 'reveal' | 'created', fn: (fileId: string) => void): () => void {
+    const set: Set<(fileId: string) => void> = event === 'reveal' ? this.revealListeners : event === 'created' ? this.createdListeners : this.listeners;
     set.add(fn);
     return () => set.delete(fn);
   }

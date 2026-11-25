@@ -2,6 +2,8 @@ use tauri::{webview::NewWindowResponse, Manager, Runtime, Url, WebviewWindow, We
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
 
+mod vault;
+
 /// Label of the one editor window, as declared in tauri.conf.json.
 const MAIN: &str = "main";
 
@@ -29,7 +31,10 @@ pub fn run() {
     )
     // The frontend polls for a new release and restarts into it (see src/desktop/updater.ts).
     .plugin(tauri_plugin_updater::Builder::new().build())
-    .plugin(tauri_plugin_process::init());
+    .plugin(tauri_plugin_process::init())
+    // markup://auth/callback brings a website sign-in back to the app (src/cloud/account.ts).
+    // On Windows and Linux a second launch carries the link; single-instance hands it over here.
+    .plugin(tauri_plugin_deep_link::init());
 
   // macOS: a menu bar of the app's own, so Cmd+W closes a tab rather than the only window.
   #[cfg(target_os = "macos")]
@@ -40,7 +45,7 @@ pub fn run() {
   });
 
   builder
-    .invoke_handler(tauri::generate_handler![show_system_menu])
+    .invoke_handler(tauri::generate_handler![show_system_menu, capture_window, vault::vault_key_get, vault::vault_key_set, vault::vault_key_delete])
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_shell::init())
@@ -51,6 +56,15 @@ pub fn run() {
             .level(log::LevelFilter::Info)
             .build(),
         )?;
+      }
+      // Installers register markup:// (from plugins.deep-link in tauri.conf.json). An AppImage is
+      // never installed, and dev builds on Windows are not either, so they register at launch.
+      #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+      {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        if let Err(e) = app.deep_link().register_all() {
+          log::warn!("could not register the markup:// link: {e}");
+        }
       }
       let window = create_main_window(app.handle())?;
       native_webview_settings(&window);
@@ -249,4 +263,88 @@ fn show_system_menu(window: tauri::WebviewWindow, at_cursor: bool) {
   }
   #[cfg(not(windows))]
   let _ = (window, at_cursor);
+}
+
+/// The window's client area as it is on screen right now, for the colour picker's eyedropper:
+/// WebView2 exposes the EyeDropper API but rejects every `open()`, so the frontend samples this
+/// instead. The reply is the width and height (u32, little endian) followed by RGBA rows, top down,
+/// in physical pixels.
+#[tauri::command]
+fn capture_window(window: tauri::WebviewWindow) -> Result<tauri::ipc::Response, String> {
+  #[cfg(windows)]
+  unsafe {
+    use windows::Win32::Foundation::{HWND, POINT, RECT};
+    use windows::Win32::Graphics::Gdi::*;
+    use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
+    use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, GetWindowRect};
+    let hwnd = HWND(window.hwnd().map_err(|e| e.to_string())?.0 as _);
+    let mut rect = RECT::default();
+    GetClientRect(hwnd, &mut rect).map_err(|e| e.to_string())?;
+    let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+    if w <= 0 || h <= 0 {
+      return Err("the window has no area".into());
+    }
+    let mut origin = POINT::default();
+    let _ = ClientToScreen(hwnd, &mut origin);
+    let mut frame = RECT::default();
+    GetWindowRect(hwnd, &mut frame).map_err(|e| e.to_string())?;
+    let (fw, fh) = (frame.right - frame.left, frame.bottom - frame.top);
+    let screen = GetDC(None);
+    let memory = CreateCompatibleDC(Some(screen));
+    // The whole window first, then the client area out of it. PW_RENDERFULLCONTENT (2) asks the
+    // compositor for what WebView2 draws through DirectComposition, and works when another window
+    // covers this one. Should it fail, copy the area from the screen instead.
+    let whole = CreateCompatibleBitmap(screen, fw.max(1), fh.max(1));
+    let previous = SelectObject(memory, whole.into());
+    let printed = PrintWindow(hwnd, memory, PRINT_WINDOW_FLAGS(2)).as_bool();
+    let bitmap = CreateCompatibleBitmap(screen, w, h);
+    let copied = {
+      let clip = CreateCompatibleDC(Some(screen));
+      let before = SelectObject(clip, bitmap.into());
+      let result = if printed {
+        BitBlt(clip, 0, 0, w, h, Some(memory), origin.x - frame.left, origin.y - frame.top, SRCCOPY)
+      } else {
+        BitBlt(clip, 0, 0, w, h, Some(screen), origin.x, origin.y, SRCCOPY | CAPTUREBLT)
+      };
+      SelectObject(clip, before);
+      let _ = DeleteDC(clip);
+      result
+    };
+    let mut info = BITMAPINFO {
+      bmiHeader: BITMAPINFOHEADER {
+        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+        biWidth: w,
+        biHeight: -h,
+        biPlanes: 1,
+        biBitCount: 32,
+        biCompression: BI_RGB.0,
+        ..Default::default()
+      },
+      ..Default::default()
+    };
+    let mut out = vec![0u8; 8 + (w as usize) * (h as usize) * 4];
+    out[0..4].copy_from_slice(&(w as u32).to_le_bytes());
+    out[4..8].copy_from_slice(&(h as u32).to_le_bytes());
+    SelectObject(memory, previous);
+    let _ = DeleteObject(whole.into());
+    let lines = GetDIBits(memory, bitmap, 0, h as u32, Some(out[8..].as_mut_ptr().cast()), &mut info, DIB_RGB_COLORS);
+    let _ = DeleteObject(bitmap.into());
+    let _ = DeleteDC(memory);
+    ReleaseDC(None, screen);
+    copied.map_err(|e| e.to_string())?;
+    if lines != h {
+      return Err("could not read the window's pixels".into());
+    }
+    // GDI hands back BGRX; the canvas wants RGBA.
+    for px in out[8..].chunks_exact_mut(4) {
+      px.swap(0, 2);
+      px[3] = 255;
+    }
+    Ok(tauri::ipc::Response::new(out))
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = window;
+    Err("screen sampling is only available on Windows".into())
+  }
 }

@@ -159,3 +159,16 @@ export function DrawPreview({ draft: draftStore, viewport: viewportStore }: { dr
     </div>
   );
 }
+
+/** The drag-select box, in screen space above the content. */
+export function MarqueePreview({ box: boxStore, viewport: viewportStore }: { box: ValueStore<Rect | null>; viewport: ViewportStore }) {
+  const box = useStore(boxStore);
+  const viewport = useStore(viewportStore);
+  if (!box) return null;
+  const p = worldToScreen(viewport, box);
+  return (
+    <div className="draw-layer" aria-hidden>
+      <div className="marquee-box" style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: box.width * viewport.zoom, height: box.height * viewport.zoom }} />
+    </div>
+  );
+}

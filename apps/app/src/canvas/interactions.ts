@@ -132,6 +132,32 @@ export function pastWrappers(doc: MarkupDoc, path: string[], at: number): number
   return at;
 }
 
+/**
+ * Layers a drag-select box can pick inside `scopeId`: its visible, unlocked children. Inside an artboard it
+ * steps past a lone wrapper frame (a page snapshot often nests everything in one), so the box picks the
+ * layers the user sees side by side. On the page itself it picks artboards and loose layers.
+ */
+export function marqueeCandidates(doc: MarkupDoc, rootId: string, scopeId: string): string[] {
+  let ids = childIds(doc, scopeId).filter((id) => pickable(doc, id));
+  if (scopeId === rootId) return ids;
+  while (ids.length === 1 && nodeFlags(doc, ids[0]!)?.type === 'frame') {
+    const inner = childIds(doc, ids[0]!).filter((id) => pickable(doc, id));
+    if (!inner.length) break;
+    ids = inner;
+  }
+  return ids;
+}
+
+const intersects = (a: Rect, b: Rect) => a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height;
+
+/** Candidates the box touches, in document order. */
+export function marqueeHits(candidates: string[], rectOf: (id: string) => Rect | null, box: Rect): string[] {
+  return candidates.filter((id) => {
+    const r = rectOf(id);
+    return !!r && intersects(r, box);
+  });
+}
+
 /** Index a dragged flex child should take among its siblings, from the pointer position on the parent's main axis. */
 export function flexDropIndex(siblingRects: Rect[], pointer: Point, axis: 'row' | 'column'): number {
   for (let i = 0; i < siblingRects.length; i++) {

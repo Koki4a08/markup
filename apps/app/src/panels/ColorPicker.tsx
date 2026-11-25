@@ -1,6 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { captureWindow, canCaptureWindow, type WindowPixels } from '../desktop/screenCapture';
 import { useDismiss } from '../ui/useDismiss';
+import { ScreenSampler } from './ScreenSampler';
 import { icons } from './icons';
 import {
   convertSpace,
@@ -31,6 +33,8 @@ interface EyeDropperResult {
 }
 type EyeDropperCtor = new () => { open(): Promise<EyeDropperResult> };
 const eyeDropper = (): EyeDropperCtor | undefined => (globalThis as { EyeDropper?: EyeDropperCtor }).EyeDropper;
+/** The Windows app samples its own window (see screenCapture.ts); browsers use their EyeDropper. */
+const canSample = () => canCaptureWindow() || !!eyeDropper();
 
 /** The opaque colour of a picked colour's channels, as CSS in its own space. */
 const solidCss = (space: Space, rgb: [number, number, number], alpha = 1) =>
@@ -69,6 +73,11 @@ export function ColorPicker({ anchor, label, value, p3 = true, onPreview, onComm
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [sampling, setSampling] = useState(false);
+  // Read by the window listeners below, which must not close the picker while the eyedropper is up.
+  const samplingRef = useRef(false);
+  samplingRef.current = sampling;
+  const sampleButton = useRef<HTMLButtonElement>(null);
+  const [capture, setCapture] = useState<{ pixels: WindowPixels; start: { x: number; y: number } } | null>(null);
   const callbacks = useRef({ onPreview, onCommit, onClose });
   callbacks.current = { onPreview, onCommit, onClose };
 
@@ -117,12 +126,13 @@ export function ColorPicker({ anchor, label, value, p3 = true, onPreview, onComm
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
+      if (samplingRef.current) return;
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !anchor.contains(t)) callbacks.current.onClose();
     };
     // Capture: Escape closes the picker instead of also selecting the parent layer.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || samplingRef.current) return;
       e.preventDefault();
       e.stopPropagation();
       callbacks.current.onClose();
@@ -140,18 +150,46 @@ export function ColorPicker({ anchor, label, value, p3 = true, onPreview, onComm
     if (space !== cur.current.space) update(convertSpace(cur.current, space), true);
   };
 
-  const sample = async () => {
-    const Ctor = eyeDropper();
-    if (!Ctor) return;
+  /** A sampled colour keeps the current alpha and colour space. */
+  const pickHex = (value: string) => {
+    const hex = parseHex(value);
+    if (hex) update(convertSpace(fromRgb('srgb', hex.rgb, cur.current.a), cur.current.space), true);
+  };
+
+  const sample = async (e: ReactMouseEvent<HTMLButtonElement>) => {
+    if (samplingRef.current) return;
+    samplingRef.current = true;
     setSampling(true);
+    if (canCaptureWindow()) {
+      // From the keyboard there is no pointer: start the loupe on the button.
+      const r = e.currentTarget.getBoundingClientRect();
+      const start = e.detail ? { x: e.clientX, y: e.clientY } : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      try {
+        // Two frames: the tooltip and the button's pressed state are gone from the capture.
+        await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+        setCapture({ pixels: await captureWindow(), start });
+      } catch {
+        samplingRef.current = false;
+        setSampling(false);
+      }
+      return;
+    }
+    const Ctor = eyeDropper();
     try {
-      const hex = parseHex((await new Ctor().open()).sRGBHex);
-      if (hex) update(convertSpace(fromRgb('srgb', hex.rgb, cur.current.a), cur.current.space), true);
+      if (Ctor) pickHex((await new Ctor().open()).sRGBHex);
     } catch {
       // Cancelled with Escape.
     } finally {
+      samplingRef.current = false;
       setSampling(false);
     }
+  };
+
+  const endCapture = () => {
+    setCapture(null);
+    samplingRef.current = false;
+    setSampling(false);
+    sampleButton.current?.focus();
   };
 
   /** Drag on a plane or strip: previews while moving, commits once on release. */
@@ -227,8 +265,8 @@ export function ColorPicker({ anchor, label, value, p3 = true, onPreview, onComm
           ))}
         </div>
         <div className="cp-head-actions">
-          {eyeDropper() && (
-            <button type="button" className="icon-button cp-head-button" aria-label="Pick a colour from the screen" data-tip="Pick from screen" onClick={sample}>
+          {canSample() && (
+            <button ref={sampleButton} type="button" className={`icon-button cp-head-button ${sampling ? 'is-active' : ''}`} aria-label="Pick a colour from the screen" aria-pressed={sampling} data-tip="Pick from screen" onClick={sample}>
               {icons.eyedropper}
             </button>
           )}
@@ -381,6 +419,17 @@ export function ColorPicker({ anchor, label, value, p3 = true, onPreview, onComm
           </div>
         </div>
       </div>
+      {capture && (
+        <ScreenSampler
+          pixels={capture.pixels}
+          start={capture.start}
+          onPick={(hex) => {
+            endCapture();
+            pickHex(hex);
+          }}
+          onCancel={endCapture}
+        />
+      )}
     </div>,
     host,
   );

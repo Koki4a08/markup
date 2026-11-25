@@ -7,6 +7,8 @@ import { useDismiss } from '../ui/useDismiss';
 import { SegmentThumb } from '../ui/SegmentThumb';
 import { copyText } from '../export/clipboard';
 import { fileUrl } from './Workspace';
+import { AccountCard } from '../cloud/AccountCard';
+import { useCloudSync, type CloudFileStatus } from '../cloud/sync';
 
 type View = { kind: 'folder'; id: string | null } | { kind: 'archive' };
 
@@ -26,6 +28,8 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
   const { workspace } = useWorkspace();
   const { library } = workspace;
   const items = useLibraryItems();
+  // Cloud backup, while signed in; null otherwise (the cloud actions and badges stay hidden).
+  const cloud = useCloudSync();
   const [view, setView] = useState<View>({ kind: 'folder', id: null });
   const [query, setQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -136,6 +140,7 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
           <span className="row-icon">{icons.archive}</span>
           <span className="row-name">Archive</span>
         </button>
+        <AccountCard />
       </aside>
 
       <section className="dashboard-main" aria-label={title}>
@@ -210,6 +215,7 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
                   location={q ? locationOf(item, byId) : null}
                   renaming={renamingId === item.id}
                   opening={openingId === item.id}
+                  cloud={item.type === 'file' ? (cloud?.status(item.id) ?? null) : null}
                   onOpen={() => openItem(item)}
                   onRename={(name) => {
                     setRenamingId(null);
@@ -250,6 +256,17 @@ export function Dashboard({ onOpened }: { onOpened(): void }) {
           onArchive={() => {
             setMenu(null);
             void run(() => (menu.item.archived ? library.unarchive([menu.item.id]) : library.archive([menu.item.id])));
+          }}
+          inCloud={cloud && menu.item.type === 'file' && !menu.item.archived ? cloud.isInCloud(menu.item.id) : null}
+          onToggleCloud={() => {
+            const { item } = menu;
+            setMenu(null);
+            if (!cloud) return;
+            const keep = !cloud.isInCloud(item.id);
+            void run(async () => {
+              await (keep ? cloud.enable(item.id) : cloud.disable(item.id));
+              setToast(keep ? 'Kept in the cloud' : 'Removed from the cloud. The copy on this device stays.');
+            });
           }}
         />
       )}
@@ -299,6 +316,7 @@ function Card({
   location,
   renaming,
   opening = false,
+  cloud = null,
   onOpen,
   onRename,
   onCancelRename,
@@ -309,6 +327,8 @@ function Card({
   location: string | null;
   renaming: boolean;
   opening?: boolean;
+  /** Cloud backup state of a file kept in the cloud, else null. */
+  cloud?: CloudFileStatus | null;
   onOpen(): void;
   onRename(name: string): void;
   onCancelRename(): void;
@@ -365,7 +385,10 @@ function Card({
             {item.name}
           </span>
         )}
-        <span className="file-card-sub">{location ?? formatWhen(item.updatedAt)}</span>
+        <span className="file-card-sub">
+          {cloud && <CloudBadge status={cloud} />}
+          {location ?? formatWhen(item.updatedAt)}
+        </span>
       </div>
       <button
         className="icon-button file-card-more"
@@ -379,6 +402,23 @@ function Card({
         {icons.more}
       </button>
     </div>
+  );
+}
+
+const CLOUD_BADGE: Record<CloudFileStatus, { label: string; icon: keyof typeof icons }> = {
+  synced: { label: 'Saved in the cloud', icon: 'cloudSynced' },
+  syncing: { label: 'Saving to the cloud', icon: 'cloudSyncing' },
+  offline: { label: 'Not saved to the cloud yet. Retries on the next change', icon: 'cloudOff' },
+  full: { label: 'Cloud storage is full. Changes stay on this device', icon: 'cloudOff' },
+  'too-large': { label: 'Too large for the cloud. Changes stay on this device', icon: 'cloudOff' },
+};
+
+function CloudBadge({ status }: { status: CloudFileStatus }) {
+  const { label, icon } = CLOUD_BADGE[status];
+  return (
+    <span className={`file-card-cloud is-${status}`} aria-label={label} data-tip={label}>
+      {icons[icon]}
+    </span>
   );
 }
 
@@ -424,6 +464,8 @@ function ContextMenu({
   onMoving,
   onMove,
   onArchive,
+  inCloud,
+  onToggleCloud,
 }: {
   menu: Menu;
   folders: LibraryItem[];
@@ -434,6 +476,9 @@ function ContextMenu({
   onMoving(): void;
   onMove(folderId: string): void;
   onArchive(): void;
+  /** Whether the file is kept in the cloud; null hides the action (signed out, folders, archive). */
+  inCloud: boolean | null;
+  onToggleCloud(): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(onClose, { ref });
@@ -506,6 +551,11 @@ function ContextMenu({
           {!item.archived && (
             <button role="menuitem" className="row" onClick={onMoving}>
               Move to…
+            </button>
+          )}
+          {inCloud !== null && (
+            <button role="menuitem" className="row" onClick={onToggleCloud}>
+              {inCloud ? 'Remove from cloud' : 'Keep in cloud'}
             </button>
           )}
           <button role="menuitem" className="row" onClick={onArchive}>

@@ -47,6 +47,33 @@ async function loadStored(fileId: string): Promise<{ ydoc: Y.Doc; persistence: I
   return null;
 }
 
+/** A stored file's full Yjs state, or null when nothing is stored under the id. For cloud backup. */
+export async function readStoredState(fileId: string): Promise<Uint8Array | null> {
+  const stored = await loadStored(fileId);
+  if (!stored) return null;
+  const state = Y.encodeStateAsUpdate(stored.ydoc);
+  await stored.persistence.destroy();
+  return state;
+}
+
+/**
+ * Merges a state (from the cloud) into the stored file, creating it when absent. Closing the
+ * database waits for the write, so the next open sees it.
+ */
+export async function mergeStoredState(fileId: string, update: Uint8Array): Promise<void> {
+  // Checked on a scratch doc first, so a state that is not this file never reaches storage.
+  const check = new Y.Doc();
+  Y.applyUpdate(check, update);
+  const matches = check.getMap('meta').get('fileId') === fileId;
+  check.destroy();
+  if (!matches) throw new MarkupError('INVALID_ARGUMENT', `The cloud copy of ${fileId} is not that file.`);
+  const ydoc = new Y.Doc();
+  const persistence = new IndexeddbPersistence(dbName(fileId), ydoc);
+  await persistence.whenSynced;
+  Y.applyUpdate(ydoc, update, 'cloud');
+  await persistence.destroy();
+}
+
 /** The local workspace: library and files in IndexedDB. */
 export async function openLocalWorkspace(opts: Pick<WorkspaceOptions, 'captureThumbnail'> = {}): Promise<Workspace> {
   const libraryDoc = new Y.Doc();

@@ -10,7 +10,7 @@ export { resolveTokenValue, TOKEN_TYPES, type Token, type TokenType, type TokenE
 export { wildcard } from './wildcard';
 export { addFontFaces, fontFaces, fontsMap, splitFontFaces } from './fonts';
 export { addKeyframes, keyframeRules, keyframesMap, splitKeyframes } from './keyframes';
-export { ActorUndo, type LogEntry } from './history';
+export { ActorUndo, historyScope, type LogEntry } from './history';
 export { runDocTool, type ToolContext } from './tools';
 export { MarkupLibrary, type LibraryItem } from './library';
 export { queryThreads, threadAuthors, type CommentThread, type CommentMessage, type CommentAttachment, type ThreadQuery, type ThreadSummary, type ThreadAuthor } from './comments';

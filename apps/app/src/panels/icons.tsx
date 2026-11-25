@@ -3,6 +3,7 @@ import {
   ArrowDownIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowSquareOutIcon,
   ArrowUDownLeftIcon,
   ArrowUpIcon,
   ArrowsInLineVerticalIcon,
@@ -11,6 +12,9 @@ import {
   CaretRightIcon,
   ChatCircleIcon,
   CircleNotchIcon,
+  CloudArrowUpIcon,
+  CloudCheckIcon,
+  CloudSlashIcon,
   CheckIcon,
   ClockCounterClockwiseIcon,
   CopyIcon,
@@ -40,6 +44,7 @@ import {
   PaletteIcon,
   PlusIcon,
   SelectionIcon,
+  SignOutIcon,
   SquareIcon,
   SparkleIcon,
   SquaresFourIcon,
@@ -122,6 +127,11 @@ export const icons = {
   alert: i(WarningCircleIcon, 'fill'),
   dismiss: i(XIcon, 'bold', 14),
   whatsNew: i(SparkleIcon, 'fill'),
+  signOut: i(SignOutIcon, 'bold', 14),
+  external: i(ArrowSquareOutIcon, 'bold', 14),
+  cloudSynced: i(CloudCheckIcon, 'fill', 14),
+  cloudSyncing: i(CloudArrowUpIcon, 'fill', 14),
+  cloudOff: i(CloudSlashIcon, 'fill', 14),
 };
 
 /** Small glyphs for inspector field prefixes, drawn on a 12px grid to sit inside 28px inputs. */

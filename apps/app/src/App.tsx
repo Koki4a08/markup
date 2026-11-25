@@ -6,6 +6,9 @@ import { revealWindow, setWindowTitle } from './desktop/native';
 import { UpdateNotice } from './desktop/UpdateNotice';
 import { startUpdateChecks } from './desktop/updater';
 import { startWhatsNew } from './desktop/whatsNew';
+import { startAccount } from './cloud/account';
+import { startUsage } from './cloud/usage';
+import { startCloudSync } from './cloud/sync';
 import { tabShortcut, tabTarget, type TabCommand } from './desktop/tabShortcuts';
 import { inTauri } from './export/clipboard';
 import { TooltipLayer } from './ui/Tooltip';
@@ -13,7 +16,7 @@ import { isMacPlatform } from './commands/keyboard';
 import { DocProvider } from './store/DocProvider';
 import { Dashboard } from './workspace/Dashboard';
 import { FileTabs } from './workspace/FileTabs';
-import { openLocalWorkspace, restoreTabs, saveTabs } from './workspace/persistence';
+import { mergeStoredState, openLocalWorkspace, readStoredState, restoreTabs, saveTabs } from './workspace/persistence';
 import type { Workspace } from './workspace/Workspace';
 import { Surfaces, useTabs, useWorkspace, WorkspaceProvider } from './workspace/WorkspaceProvider';
 
@@ -52,6 +55,11 @@ export function App() {
     };
   }, [surfaces]);
 
+  // Personal usage stats: counted on this device, saved to the account only when signed in and allowed.
+  useEffect(() => (workspace ? startUsage(workspace) : undefined), [workspace]);
+  // Cloud backup and sync of the files the user keeps in the cloud, while signed in.
+  useEffect(() => (workspace ? startCloudSync(workspace, { read: readStoredState, merge: mergeStoredState }) : undefined), [workspace]);
+
   // The desktop window opens hidden; it appears once there is something real to show.
   const ready = !!workspace || !!error;
   useEffect(() => {
@@ -61,6 +69,8 @@ export function App() {
     startUpdateChecks();
     // Desktop only: after an update, say what is new in the version that just opened.
     startWhatsNew();
+    // Desktop only, optional: the Markup account this app is signed in to (title-strip button).
+    startAccount().catch((e: unknown) => console.warn('Accounts are unavailable', e));
   }, [ready]);
 
   if (error) return <div className="boot-message" role="alert">{error}</div>;

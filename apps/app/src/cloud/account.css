@@ -1,0 +1,470 @@
+/* ───────────────────────── Account (bottom of the Files sidebar) ───────────────────────── */
+
+/* Pinned to the bottom of the sidebar; stays in view when the folder tree scrolls. */
+.dashboard-account {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: auto;
+  padding: 10px 8px 2px;
+  background: var(--panel);
+}
+
+.account-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: inset 0 1px 0 rgb(var(--ink) / 0.05);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 16px;
+  animation: account-card-in var(--dur-slow) var(--ease-out);
+}
+
+.account-card.is-signedIn {
+  padding: 4px;
+}
+
+@keyframes account-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+    filter: blur(2px);
+  }
+}
+
+.account-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.account-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text-2);
+}
+
+.account-row-text strong,
+.account-identity-text strong,
+.account-switch-text strong {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.account-row-text > span {
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+/* The avatar: the photo, or the orb (the app's one accent, lit from the top left, soft inner rim). */
+.account-avatar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.account-orb {
+  display: inline-block;
+  background: radial-gradient(circle at 32% 28%, #cfe0ff 0%, #7aa5ff 22%, #3b76f6 52%, #1f4fd6 78%, #1a3fa8 100%);
+  box-shadow: inset 0 -1px 2px rgb(0 0 0 / 0.25), inset 0 1px 1px rgb(255 255 255 / 0.45), 0 0 0 1px rgb(var(--ink) / 0.1);
+}
+
+.account-tile {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text);
+}
+
+.account-tile svg {
+  width: 14px;
+  height: 14px;
+}
+
+.account-spin svg {
+  animation: update-notice-spin 900ms linear infinite;
+}
+
+/* Signed in: the whole identity row is the menu button. */
+.account-identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.account-identity:hover,
+.account-identity.is-open {
+  background: var(--hover-strong);
+}
+
+.account-identity-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.account-identity-text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-identity-more {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  color: var(--text-3);
+}
+
+.account-identity-more svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Menu above the card. */
+.account-pop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--menu-border);
+  border-radius: var(--r-lg);
+  background: var(--menu-bg);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: var(--menu-shadow);
+  color: var(--text);
+  font-size: 12px;
+  animation: pop-in var(--dur) var(--ease-out);
+}
+
+.account-pop-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-pop-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+.account-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 8px 8px;
+  cursor: default;
+}
+
+.account-switch-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+/* A small switch drawn on the native checkbox, so it stays keyboard and screen-reader friendly. */
+.account-switch input {
+  position: relative;
+  flex-shrink: 0;
+  width: 26px;
+  height: 16px;
+  margin: 1px 0 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  appearance: none;
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.account-switch input::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  content: '';
+  transition: transform var(--dur-fast) ease-out;
+}
+
+.account-switch input:checked {
+  background: var(--accent-fill);
+}
+
+.account-switch input:checked::after {
+  transform: translateX(10px);
+}
+
+.account-switch input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.account-pop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.account-pop-item:hover:not(:disabled) {
+  background: var(--hover-strong);
+}
+
+.account-pop-item:disabled {
+  opacity: 0.6;
+}
+
+.account-pop-item.is-danger {
+  color: var(--danger);
+}
+
+.account-pop-item svg {
+  width: 14px;
+  height: 14px;
+}
+
+.account-pop .account-note {
+  padding: 0 8px 4px;
+}
+
+.account-note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.account-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  padding: 7px 8px;
+  border-radius: var(--r);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.account-error svg {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  margin-top: 1px;
+}
+
+.account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.account-actions.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.account-button-primary,
+.account-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  font: inherit;
+  font-weight: 500;
+  cursor: default;
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.account-button-primary {
+  border: 1px solid transparent;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.account-button-primary:hover {
+  background: var(--accent-fill-hover);
+}
+
+.account-button-primary:active {
+  background: var(--accent-fill-active);
+}
+
+.account-button-secondary {
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.account-button-secondary:hover:not(:disabled) {
+  background: var(--raised-hover);
+}
+
+.account-button-primary svg,
+.account-button-secondary svg {
+  width: 13px;
+  height: 13px;
+}
+
+.account-link {
+  align-self: center;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 500;
+  cursor: default;
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.account-link:hover {
+  background: var(--accent-softer);
+}
+
+:is(.account-button-primary, .account-button-secondary, .account-link, .account-identity, .account-pop-item):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Cloud storage in the signed-in card. */
+.account-storage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 6px 6px;
+}
+
+.account-storage-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.account-storage-text .is-numeric {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-storage-bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.account-storage-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-fill);
+  transition: width var(--dur) var(--ease-out);
+}
+
+.account-storage-bar.is-near-full span {
+  background: var(--danger);
+}
+
+/* Cloud state on a file card: a small glyph before the "Edited…" line. */
+.file-card-sub:has(.file-card-cloud) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-card-cloud {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  color: var(--text-3);
+}
+
+.file-card-cloud svg {
+  width: 12px;
+  height: 12px;
+}
+
+.file-card-cloud.is-syncing {
+  color: var(--accent-text);
+}
+
+.file-card-cloud.is-full,
+.file-card-cloud.is-too-large {
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-card,
+  .account-pop {
+    animation: none;
+  }
+
+  .account-spin svg {
+    animation: none;
+  }
+}

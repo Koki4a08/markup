@@ -18,7 +18,7 @@ export const PanelTop = memo(function PanelTop({ bridgeStatus, viewport, onZoom 
   return (
     <div className="panel-top">
       <span className={`bridge-status is-${bridgeStatus}`} data-tip={connected ? 'Agents can reach this file through markup mcp' : 'Run markup mcp from an agent to connect'}>
-        {connected ? 'Agents connected' : 'Agents offline'}
+        {connected ? 'Agents connected' : bridgeStatus === 'connecting' ? 'Connecting' : 'Agents offline'}
       </span>
       <ZoomMenu viewport={viewport} onZoom={onZoom} />
     </div>

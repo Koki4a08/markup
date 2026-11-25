@@ -22,6 +22,21 @@ export interface ServerCommand {
 
 export const SERVER_NAME = 'markup';
 
+export const SITE = 'https://markup.here';
+
+/** The one-line installers served by the website (markup-website/public/install.sh and install.ps1). */
+export const INSTALL_COMMANDS = {
+  unix: `curl -fsSL ${SITE}/install.sh | sh`,
+  windows: `irm ${SITE}/install.ps1 | iex`,
+} as const;
+
+/** Where the install scripts put the binary, written out for a placeholder home folder. */
+export const INSTALLED_PATHS = {
+  mac: '/Users/you/.markup/bin/markup',
+  linux: '/home/you/.markup/bin/markup',
+  windows: 'C:\\Users\\you\\.markup\\bin\\markup.exe',
+} as const;
+
 /** The JSON value each JSON-configured agent stores under its servers key. */
 const plainEntry = ({ command, args }: ServerCommand) => ({ command, args });
 

@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { AGENT_LABELS, AGENTS, snippets, type Agent } from '@markup/mcp/snippets';
+import { AGENT_LABELS, AGENTS, INSTALL_COMMANDS, INSTALLED_PATHS, snippets, type Agent } from '@markup/mcp/snippets';
 import { copyText, inTauri } from '../export/clipboard';
+import { isMacPlatform } from '../commands/keyboard';
 import { icons } from './icons';
+import { SegmentThumb } from '../ui/SegmentThumb';
 import { useDismiss } from '../ui/useDismiss';
 
-/** What the snippets show for the server binary: the editor cannot know where the user keeps `markup`. */
-export const PLACEHOLDER_PATH = '<path to markup>';
+type Os = 'mac' | 'linux' | 'windows';
+
+/** The visitor's system, for the right install command and config path. */
+function detectOs(): Os {
+  if (typeof navigator === 'undefined') return 'mac';
+  if (isMacPlatform()) return 'mac';
+  return /Win/i.test(navigator.platform || navigator.userAgent) ? 'windows' : 'linux';
+}
 
 interface RunState {
   status: 'running' | 'ok' | 'error';
@@ -39,11 +47,15 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-/** "Connect an agent": one-click installs on desktop, copyable setup everywhere. */
+/**
+ * "Connect an agent". Desktop: one click per agent through the bundled CLI. Everywhere: the one-line
+ * installer for the standalone CLI, and the raw config for people who edit it by hand.
+ */
 export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; desktop?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [runs, setRuns] = useState<Partial<Record<Agent, RunState>>>({});
-  const all = snippets({ command: PLACEHOLDER_PATH, args: ['mcp'] });
+  const [os, setOs] = useState<Os>(detectOs);
+  const [manual, setManual] = useState(false);
   // Resize only: it holds install output, which switching apps to check on the agent must not throw away.
   useDismiss(onClose, { ref, blur: false, wheel: false });
 
@@ -79,6 +91,9 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
     setRuns((r) => ({ ...r, [agent]: next }));
   };
 
+  const command = os === 'windows' ? INSTALL_COMMANDS.windows : INSTALL_COMMANDS.unix;
+  const all = snippets({ command: INSTALLED_PATHS[os], args: ['mcp'] });
+
   return (
     <div className="mcp-panel" ref={ref} role="region" aria-label="Connect an agent">
       <div className="mcp-panel-head">
@@ -88,41 +103,115 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
         </button>
       </div>
       <p className="mcp-panel-note">
-        {desktop ? 'Add Markup to an agent with one click, or set it up by hand.' : 'Agents reach this editor through the markup command. Add it to your agent:'}
+        {desktop
+          ? 'Add Markup to your agent with one click. It can then read and edit the file you have open.'
+          : 'One command installs the markup CLI and asks which of your agents to connect.'}
       </p>
-      <ul className="mcp-agents">
-        {AGENTS.map((agent) => {
-          const run = runs[agent];
-          const snippet = all[agent];
-          const label = AGENT_LABELS[agent];
-          return (
-            <li key={agent} className="mcp-agent">
-              <div className="mcp-agent-row">
-                <span className="mcp-agent-name">{label}</span>
-                {desktop && (
-                  <button className="mcp-add" disabled={run?.status === 'running'} onClick={() => void add(agent)}>
-                    {run?.status === 'running' ? 'Adding…' : `Add to ${label}`}
-                  </button>
-                )}
-              </div>
-              {run && run.status !== 'running' && (
-                <pre className={`mcp-output is-${run.status}`} role="status">
-                  {run.output}
-                </pre>
-              )}
-              <div className="mcp-snippet">
-                <div className="mcp-snippet-head">
-                  <span>{snippet.where}</span>
-                  <CopyButton text={snippet.code} label={`Copy ${label} setup`} />
+
+      {desktop && (
+        <ul className="mcp-agents" aria-label="Agents">
+          {AGENTS.map((agent) => {
+            const run = runs[agent];
+            const label = AGENT_LABELS[agent];
+            return (
+              <li key={agent} className="mcp-agent">
+                <div className="mcp-agent-row">
+                  <span className="mcp-agent-name">{label}</span>
+                  {run?.status === 'ok' ? (
+                    <span className="mcp-added">
+                      {icons.check}
+                      Added
+                    </span>
+                  ) : (
+                    <button className="mcp-add" aria-label={`Add to ${label}`} disabled={run?.status === 'running'} onClick={() => void add(agent)}>
+                      {run?.status === 'running' ? 'Adding…' : run?.status === 'error' ? 'Try again' : 'Add'}
+                    </button>
+                  )}
                 </div>
-                <pre>
-                  <code>{snippet.code.trimEnd()}</code>
-                </pre>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                {run && run.status !== 'running' && (
+                  <pre className={`mcp-output is-${run.status}`} role="status">
+                    {run.status === 'ok' ? `${run.output}\nRestart ${label} so it loads Markup.` : run.output}
+                  </pre>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <section className="mcp-section" aria-label="Install from a terminal">
+        <div className="mcp-section-head">
+          <span className="mcp-section-title">{desktop ? 'Or from a terminal' : 'Run in a terminal'}</span>
+          <div className="segmented is-small" role="radiogroup" aria-label="System">
+            <SegmentThumb />
+            {(
+              [
+                ['unix', 'macOS, Linux'],
+                ['windows', 'Windows'],
+              ] as const
+            ).map(([id, text]) => {
+              const on = id === 'windows' ? os === 'windows' : os !== 'windows';
+              return (
+                <button
+                  key={id}
+                  role="radio"
+                  aria-checked={on}
+                  className={`segment ${on ? 'is-active' : ''}`}
+                  onClick={() => setOs(id === 'windows' ? 'windows' : isMacPlatform() ? 'mac' : 'linux')}
+                >
+                  {text}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mcp-command">
+          <code>
+            <span className="mcp-prompt" aria-hidden>
+              {os === 'windows' ? '>' : '$'}
+            </span>
+            {command}
+          </code>
+          <CopyButton text={command} label="Copy install command" />
+        </div>
+        <p className="mcp-hint">
+          {os === 'windows' ? 'Paste it in PowerShell.' : 'Paste it in Terminal.'} Then <code>markup status</code> shows what is connected and{' '}
+          <code>markup update</code> gets the newest version.
+        </p>
+      </section>
+
+      <div className="mcp-manual">
+        <button type="button" className="mcp-manual-toggle" aria-expanded={manual} onClick={() => setManual((m) => !m)}>
+          <span className={`twisty ${manual ? 'is-open' : ''}`} aria-hidden>
+            {icons.chevron}
+          </span>
+          Edit a config by hand
+        </button>
+        {manual && (
+          <ul className="mcp-snippets">
+            {AGENTS.map((agent) => {
+              const snippet = all[agent];
+              const label = AGENT_LABELS[agent];
+              return (
+                <li key={agent} className="mcp-snippet">
+                  <div className="mcp-snippet-head">
+                    <span>
+                      <strong>{label}</strong> {snippet.where}
+                    </span>
+                    <CopyButton text={snippet.code} label={`Copy ${label} setup`} />
+                  </div>
+                  <pre>
+                    <code>{snippet.code.trimEnd()}</code>
+                  </pre>
+                </li>
+              );
+            })}
+            <li className="mcp-hint">Replace “you” with your user name. <code>markup status</code> prints the exact path.</li>
+          </ul>
+        )}
+      </div>
+
+      <p className="mcp-panel-foot">Restart the agent after adding Markup, then ask it to look at your open file.</p>
     </div>
   );
 }

@@ -11,9 +11,9 @@ PRODUCT.md
 CLAUDE.md
 dist-firefox
 
-# Secrets: keep real keys out of git; .env.example lists the names
+# Env files (keys, settings) never go in git
 .env*
-!.env.example
 
-# Supabase CLI local state
-supabase/.temp
+# The Supabase backend (migrations, Edge Functions, their secrets) is private: it stays on
+# this machine and is deployed from here, never pushed to this public repo.
+supabase/

@@ -40,6 +40,8 @@ export interface BridgeOptions {
   /** Id of the editor's human actor; "current-user" in comment filters resolves to it. */
   currentUserId?: string;
   onStatus?(status: BridgeStatus): void;
+  /** Every tool call an agent makes, by agent name and tool (for the user's own usage stats). */
+  onCall?(agent: string, method: string): void;
 }
 
 export interface BridgeConnection {
@@ -196,6 +198,7 @@ export function connectBridge(opts: BridgeOptions): BridgeConnection {
   const handle = async (msg: RequestMsg): Promise<ResponseMsg> => {
     try {
       const actor = actorFor(msg.agent);
+      opts.onCall?.(msg.agent.name, msg.method);
       const resolved = resolveLinks(msg.method, (msg.params ?? {}) as Params);
       const params = resolved.params;
       const routedFileId = msg.fileId ? (parseMarkupLink(msg.fileId)?.fileId ?? msg.fileId) : ((params.fileId as string | undefined) ?? resolved.fileId);

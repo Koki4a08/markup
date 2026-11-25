@@ -1,7 +1,23 @@
 import { useCallback, useRef, type RefObject } from 'react';
 import type { MarkupDoc, NodeSpec, Styles } from '@markup/doc';
 import { measureNode, parsePxValue, unionRects, type Rect } from './geometry';
-import { flowDropTarget, freeformMove, hitPath, hitTest, inFlow, pageLayerStyles, pastWrappers, pickFromPath, resizeRect, JOIN_FLOW, type DropTarget, type Handle } from './interactions';
+import {
+  childIds,
+  flowDropTarget,
+  freeformMove,
+  hitPath,
+  hitTest,
+  inFlow,
+  marqueeCandidates,
+  marqueeHits,
+  pageLayerStyles,
+  pastWrappers,
+  pickFromPath,
+  resizeRect,
+  JOIN_FLOW,
+  type DropTarget,
+  type Handle,
+} from './interactions';
 import { FlowPreview } from './flowPreview';
 import type { Tool } from './tools';
 import { screenToWorld, type Point } from './viewport';
@@ -33,6 +49,8 @@ interface GestureOptions {
   startTextEdit(id: string): void;
   /** Live box while drawing a frame or rectangle (world rect), null when the gesture ends. */
   onDraw?(draft: DrawDraft | null): void;
+  /** Live drag-select box (world rect), null when the gesture ends. */
+  onMarquee?(box: Rect | null): void;
   /** Comment tool click: the node under the pointer with the offset inside it, or the world point. */
   placeComment(at: { nodeId: string | null; x: number; y: number }): void;
 }
@@ -121,7 +139,7 @@ export function useCanvasGestures(o: GestureOptions) {
     if (o.tool === 'comment') return placeComment(start);
     const path = hitPath(doc, o.rootId, start, passRectOf());
     let hit = pickFromPath(doc, path, selection.get(), e.metaKey || e.ctrlKey);
-    if (!hit) return selection.set([]);
+    if (!hit) return selectBox(start, o.rootId, e.shiftKey, null);
     if (clicks === 2) {
       if (doc.getNode(hit)?.type === 'text') return o.startTextEdit(hit);
       // Double-click a frame: step one level into it, to the child under the pointer (past lone wrappers).
@@ -134,10 +152,60 @@ export function useCanvasGestures(o: GestureOptions) {
       }
     }
     const current = selection.get();
+    // Pressed on an artboard's empty area: a drag draws a selection box over its layers, a click still picks it.
+    if (clicks === 1 && !e.altKey && !current.includes(hit) && onBackground(path, hit)) return selectBox(start, path[0]!, e.shiftKey, hit);
     if (e.shiftKey) return selection.set(current.includes(hit) ? current.filter((id) => id !== hit) : [...current, hit]);
     const ids = current.includes(hit) ? current : [hit];
     selection.set(ids);
     moveSelection(ids, start, e.altKey);
+  };
+
+  /** The pick is the deepest layer under the pointer and is the artboard itself or a lone wrapper inside it. */
+  const onBackground = (path: string[], hit: string): boolean => {
+    const at = path.indexOf(hit);
+    if (at !== path.length - 1) return false;
+    for (let i = 1; i <= at; i++) if (childIds(doc, path[i - 1]!).length !== 1) return false;
+    return true;
+  };
+
+  /**
+   * Drag-select: the box picks every layer of `scopeId` it touches (artboards and loose layers on the page,
+   * an artboard's layers inside one), live as it grows. Shift adds to the selection. Released without a drag
+   * it is a click: `clickPick` is selected (or toggled with Shift), or on the empty page the selection clears.
+   * Escape puts the selection back.
+   */
+  const selectBox = (start: Point, scopeId: string, additive: boolean, clickPick: string | null) => {
+    const before = selection.get();
+    if (!clickPick && !additive) selection.set([]);
+    const candidates = marqueeCandidates(doc, o.rootId, scopeId);
+    // Measured once up front: nothing reflows while the box is drawn, and panning mid-drag keeps world rects valid.
+    const measure = passRectOf();
+    const rects = new Map(candidates.map((id) => [id, measure(id)]));
+    let moved = false;
+    let last: string[] | null = null;
+    trackPointer(
+      (ev) => {
+        const p = toWorld(ev);
+        if (!moved && Math.hypot(p.x - start.x, p.y - start.y) * o.viewport.get().zoom < DRAG_THRESHOLD) return;
+        moved = true;
+        const box = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), width: Math.abs(p.x - start.x), height: Math.abs(p.y - start.y) };
+        o.onMarquee?.(box);
+        const hits = marqueeHits(candidates, (id) => rects.get(id) ?? null, box);
+        if (last && hits.length === last.length && hits.every((id, i) => id === last![i])) return;
+        last = hits;
+        selection.set(additive ? [...before, ...hits.filter((id) => !before.includes(id))] : hits);
+      },
+      () => {
+        o.onMarquee?.(null);
+        if (moved || !clickPick) return;
+        if (additive) selection.set(before.includes(clickPick) ? before.filter((id) => id !== clickPick) : [...before, clickPick]);
+        else selection.set([clickPick]);
+      },
+      () => {
+        o.onMarquee?.(null);
+        selection.set(before);
+      },
+    );
   };
 
   /** Whether a layer is placed by left/top (an artboard, a loose page layer, an absolutely positioned layer) rather than by its parent's layout. */

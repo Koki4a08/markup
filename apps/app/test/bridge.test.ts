@@ -118,6 +118,16 @@ describe('bridge client', () => {
     expect(res).toMatchObject({ ok: false, error: { code: 'FILE_NOT_OPEN', message: expect.stringContaining('open_file') } });
   });
 
+  it('reports every agent tool call, by agent and tool, for usage stats', async () => {
+    const ws = memoryWorkspace();
+    const calls: string[] = [];
+    const bridge = connectBridge({ workspace: ws.workspace, url: `ws://127.0.0.1:${port++}`, WebSocketImpl: WebSocket as unknown as typeof globalThis.WebSocket, onCall: (a, m) => calls.push(`${a}:${m}`) });
+    cleanups.push(() => bridge.close());
+    await bridge.handle({ type: 'request', id: 'r1', method: 'list_resources', params: {}, agent });
+    await bridge.handle({ type: 'request', id: 'r2', method: 'get_basic_info', params: {}, agent });
+    expect(calls).toEqual([`${agent.name}:list_resources`, `${agent.name}:get_basic_info`]);
+  });
+
   it('doc errors come back with their code', async () => {
     const { hub } = await setup();
     await expect(hub.request({ method: 'get_node_info', params: { nodeId: 'nope' }, agent })).rejects.toMatchObject({ code: 'NODE_NOT_FOUND' });

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { LibraryItem } from '@markup/doc';
 import type { BridgeStatus, DomTools } from '../bridge/client';
 import { useStableSnapshot } from '../store/hooks';
+import { recordToolCall } from '../cloud/usage';
 import type { Tab, Workspace } from './Workspace';
 
 /** What a mounted editor offers for its file: canvas tools for agents, and a thumbnail. */
@@ -44,7 +45,7 @@ export function WorkspaceProvider({ workspace, surfaces, children }: { workspace
     let bridge: { close(): void } | undefined;
     void import('../bridge/client').then(
       ({ connectBridge }) => {
-        if (!closed) bridge = connectBridge({ workspace, domTools: (fileId) => surfaces.get(fileId)?.domTools, onStatus });
+        if (!closed) bridge = connectBridge({ workspace, domTools: (fileId) => surfaces.get(fileId)?.domTools, onStatus, onCall: recordToolCall });
       },
       (err: unknown) => {
         console.error('Could not load the agent bridge', err);

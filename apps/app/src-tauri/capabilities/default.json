@@ -21,6 +21,7 @@
     "dialog:allow-save",
     "fs:allow-write-file",
     "updater:default",
+    "deep-link:default",
     "process:allow-restart",
     {
       "identifier": "shell:allow-execute",

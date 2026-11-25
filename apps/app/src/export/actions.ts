@@ -1,6 +1,7 @@
 import { DEFAULT_EXPORT, toJsx, type ExportSetting, type MarkupDoc } from '@markup/doc';
 import { copyImage, copyText, saveFile } from './clipboard';
 import { renderExport, withRenderedNodes } from './render';
+import { recordExport } from '../cloud/usage';
 
 /** `<layer name>@<scale>.<ext>`, safe as a file name. */
 export const exportFileName = (layerName: string, scale: string, ext: string) => `${layerName.replace(/[\/:*?"<>|\u0000-\u001f]+/g, '-').trim() || 'Layer'}@${scale}.${ext}`;
@@ -28,7 +29,10 @@ export async function exportNodes(doc: MarkupDoc, ids: string[]): Promise<number
   await withRenderedNodes(doc, ids, async (element) => {
     for (const job of exportable) {
       const out = await renderExport(element(job.id), job.setting);
-      if (await saveFile(exportFileName(job.name, job.setting.scale, out.ext), out.bytes, out.mimeType)) count++;
+      if (await saveFile(exportFileName(job.name, job.setting.scale, out.ext), out.bytes, out.mimeType)) {
+        count++;
+        recordExport(out.ext);
+      }
     }
   });
   return count;

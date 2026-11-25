@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Markup",
   "mainBinaryName": "markup-app",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "identifier": "org.markup.app",
   "build": {
     "frontendDist": "../dist",
@@ -55,6 +55,11 @@
     "createUpdaterArtifacts": true
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["markup"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY4N0ZGMTExMUNBNDg2NkIKUldScmhxUWNFZkYvYUs0dHY5bnBnRmpWbnhxZ29heDFkY2pPMm1QbnY3ZmZrbUdGa3lHNHdTS2IK",
       "endpoints": [

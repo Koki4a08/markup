@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MarkupDoc, type Actor } from '@markup/doc';
-import { freeformMove, hitPath, hitTest, pastWrappers, pickFromPath } from '../src/canvas/interactions';
+import { freeformMove, hitPath, hitTest, marqueeCandidates, marqueeHits, pastWrappers, pickFromPath } from '../src/canvas/interactions';
 import type { Rect } from '../src/canvas/geometry';
 
 const human: Actor = { id: 'u1', kind: 'human', name: 'KG' };
@@ -138,5 +138,40 @@ describe('pickFromPath', () => {
     // It never steps onto a leaf: a lone wrapper above the text stays the pick.
     expect(pastWrappers(doc, path, 4)).toBe(4);
     expect(pickFromPath(doc, path, [label], false)).toBe(label);
+  });
+});
+
+describe('drag-select', () => {
+  it('on the page picks artboards; inside an artboard picks its layers past a lone wrapper', () => {
+    const { doc, rootId, artboard, card, title } = setup();
+    expect(marqueeCandidates(doc, rootId, rootId)).toEqual([artboard]);
+    // The artboard holds only Card, a frame: the box reaches Card's layers.
+    expect(marqueeCandidates(doc, rootId, artboard)).toEqual([title]);
+    const [badge] = doc.insertNodes(human, artboard, [{ type: 'text', text: 'Badge' }]);
+    expect(marqueeCandidates(doc, rootId, artboard)).toEqual([card, badge]);
+  });
+
+  it('skips locked and hidden layers', () => {
+    const { doc, rootId, artboard, card } = setup();
+    const [a, b, c] = doc.insertNodes(human, artboard, [
+      { type: 'text', text: 'A' },
+      { type: 'text', text: 'B' },
+      { type: 'text', text: 'C' },
+    ]);
+    doc.setFlags(human, [a!], { locked: true });
+    doc.setFlags(human, [b!], { hidden: true });
+    expect(marqueeCandidates(doc, rootId, artboard)).toEqual([card, c]);
+  });
+
+  it('picks every candidate the box touches, in document order', () => {
+    const rects: Record<string, Rect> = {
+      a: { x: 0, y: 0, width: 50, height: 50 },
+      b: { x: 100, y: 0, width: 50, height: 50 },
+      c: { x: 0, y: 100, width: 50, height: 50 },
+    };
+    const rectOf = (id: string) => rects[id] ?? null;
+    expect(marqueeHits(['a', 'b', 'c'], rectOf, { x: 40, y: 40, width: 70, height: 5 })).toEqual(['a', 'b']);
+    expect(marqueeHits(['a', 'b', 'c'], rectOf, { x: 60, y: 60, width: 20, height: 20 })).toEqual([]);
+    expect(marqueeHits(['a', 'b', 'c', 'gone'], rectOf, { x: -10, y: -10, width: 500, height: 500 })).toEqual(['a', 'b', 'c']);
   });
 });

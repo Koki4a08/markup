@@ -825,35 +825,58 @@ html.is-resizing-panel * {
   transform-origin: top right;
 }
 
+/* Agent status: plain label with a status dot, no tinted pill. Hover only hints at the tooltip. */
 .bridge-status {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 26px;
-  padding: 0 10px 0 9px;
-  border-radius: 999px;
+  height: 24px;
+  padding: 0 8px 0 7px;
+  border-radius: var(--r);
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
+  cursor: default;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.bridge-status:hover {
+  background: var(--hover);
 }
 
 .bridge-status::before {
   content: '';
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #52525b;
+  background: rgb(var(--ink) / 0.22);
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.06);
+  transition: background-color 200ms ease, box-shadow 200ms ease;
+}
+
+.bridge-status.is-connecting::before {
+  animation: bridge-dot-wait 1.4s ease-in-out infinite;
 }
 
 .bridge-status.is-connected {
   color: var(--text-2);
-  background: var(--success-soft);
 }
 
 .bridge-status.is-connected::before {
   background: var(--success);
-  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 16%, transparent), 0 0 6px color-mix(in srgb, var(--success) 45%, transparent);
+}
+
+@keyframes bridge-dot-wait {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bridge-status.is-connecting::before {
+    animation: none;
+  }
 }
 
 /* "Connect your agent" panel, opened from the right panel's MCP section, sits beside the panel. */
@@ -1576,6 +1599,14 @@ html.is-dragging-layer * {
 
 .draw-label {
   position: absolute;
+}
+
+.marquee-box {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-softer);
 }
 
 .selection-layer {
@@ -2411,6 +2442,94 @@ button.field-input:hover {
 
 .cp-head-button {
   color: var(--text-3);
+}
+
+.cp-head-button.is-active {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+
+/* Desktop eyedropper: a loupe over the whole window that stands in for the pointer. */
+.screen-sampler {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+  outline: none;
+  cursor: none;
+}
+
+.screen-sampler-loupe {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5), 0 0 0 3px #fff, 0 0 0 4px rgb(0 0 0 / 0.18), 0 10px 28px -6px rgb(0 0 0 / 0.45);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: sampler-in 140ms ease-out;
+}
+
+.screen-sampler-loupe canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.screen-sampler-grid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(to right, rgb(127 127 127 / 0.22) 1px, transparent 1px), linear-gradient(to bottom, rgb(127 127 127 / 0.22) 1px, transparent 1px);
+}
+
+.screen-sampler-target {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #fff;
+  transform: translate(-50%, -50%);
+}
+
+.screen-sampler-value {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px 0 6px;
+  border-radius: 999px;
+  background: var(--popover);
+  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-pop);
+  color: var(--text);
+  font-family: var(--mono-font);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: sampler-in 140ms ease-out;
+}
+
+.screen-sampler-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(var(--ink) / 0.16);
+}
+
+@keyframes sampler-in {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-sampler-loupe,
+  .screen-sampler-value {
+    animation: none;
+  }
 }
 
 .cp-body {
@@ -3507,6 +3626,8 @@ button.field-input:hover {
 }
 
 .dashboard-nav {
+  display: flex;
+  flex-direction: column;
   padding: 6px 0;
   overflow-y: auto;
 }
@@ -4729,14 +4850,14 @@ button.field-input:hover {
 .mcp-agents {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 4px 0 10px;
+  border-top: 1px solid var(--border);
 }
 
 .mcp-agent {
   display: grid;
-  gap: 8px;
-  padding: 12px 16px 14px;
-  border-top: 1px solid var(--border);
+  gap: 6px;
+  padding: 4px 12px 4px 16px;
 }
 
 .mcp-agent-row {
@@ -4744,31 +4865,163 @@ button.field-input:hover {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-height: 30px;
 }
 
 .mcp-agent-name {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .mcp-add {
+  min-width: 56px;
   height: 26px;
   padding: 0 10px;
   border: 0;
   border-radius: var(--r);
-  background: var(--accent-fill);
-  color: #fff;
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--border-input), inset 0 1px 0 rgb(255 255 255 / 0.03);
+  color: var(--text);
   font: inherit;
   font-weight: 500;
   cursor: default;
+  transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
 }
 
 .mcp-add:hover:not(:disabled) {
-  background: var(--accent-fill-hover);
+  background: var(--accent-fill);
+  box-shadow: none;
+  color: #fff;
 }
 
 .mcp-add:disabled {
   opacity: 0.6;
+}
+
+.mcp-added {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 4px;
+  color: var(--success);
+  font-weight: 500;
+  animation: fade-in var(--dur) var(--ease-out);
+}
+
+.mcp-added svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* The one-line installer for the standalone CLI. */
+.mcp-section {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.mcp-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mcp-section-title {
+  font-weight: 600;
+}
+
+.mcp-section-head .segmented {
+  flex: 0 0 auto;
+}
+
+.mcp-command {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--chrome);
+}
+
+.mcp-command code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  color: var(--text);
+  font: 11px/1.55 var(--mono-font);
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.mcp-prompt {
+  margin-right: 8px;
+  color: var(--accent-text);
+  user-select: none;
+}
+
+.mcp-command .icon-button,
+.mcp-snippet-head .icon-button {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.mcp-hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.mcp-hint code,
+.mcp-panel-foot code {
+  font: 10.5px var(--mono-font);
+  color: var(--text-2);
+}
+
+/* "Edit a config by hand": closed by default, the configs are long. */
+.mcp-manual {
+  border-top: 1px solid var(--border);
+}
+
+.mcp-manual-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 36px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
   cursor: default;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.mcp-manual-toggle:hover,
+.mcp-manual-toggle[aria-expanded='true'] {
+  color: var(--text);
+}
+
+.mcp-manual-toggle .twisty {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  color: var(--text-3);
+}
+
+.mcp-snippets {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 2px 16px 14px;
+  list-style: none;
+  animation: fade-in var(--dur) var(--ease-out);
 }
 
 .mcp-snippet {
@@ -4781,12 +5034,22 @@ button.field-input:hover {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
   color: var(--text-3);
   font-size: 11px;
 }
 
-.mcp-snippet-head .icon-button {
-  color: var(--text-3);
+.mcp-snippet-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-snippet-head strong {
+  margin-right: 4px;
+  color: var(--text);
+  font-weight: 600;
 }
 
 .mcp-snippet pre,
@@ -4807,12 +5070,22 @@ button.field-input:hover {
   color: var(--text);
   background: var(--success-soft);
   border-color: rgba(52, 211, 153, 0.25);
+  animation: fade-in var(--dur) var(--ease-out);
 }
 
 .mcp-output.is-error {
   color: var(--danger);
   background: var(--danger-soft);
   border-color: rgba(248, 113, 113, 0.3);
+}
+
+.mcp-panel-foot {
+  margin: 0;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* ───────────────────────── Press feedback ───────────────────────── */

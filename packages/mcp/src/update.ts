@@ -1,13 +1,8 @@
 import path from 'node:path';
+import { INSTALL_COMMANDS, SITE } from './snippets';
 
-export const SITE = 'https://markup.here';
+export { INSTALL_COMMANDS, SITE };
 export const REPO = 'Koki4a08/markup';
-
-/** The one-line installers served by the website (markup-website/public). */
-export const INSTALL_COMMANDS = {
-  unix: `curl -fsSL ${SITE}/install.sh | sh`,
-  windows: `irm ${SITE}/install.ps1 | iex`,
-} as const;
 
 export const installCommand = (platform: NodeJS.Platform) => (platform === 'win32' ? INSTALL_COMMANDS.windows : INSTALL_COMMANDS.unix);
 

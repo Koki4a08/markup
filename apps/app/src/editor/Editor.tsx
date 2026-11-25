@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Canvas, controlOwnsKey, isTyping } from '../canvas/Canvas';
 import { measureNode, unionRects, type Rect } from '../canvas/geometry';
 import { useCanvasGestures, type DrawDraft } from '../canvas/gestures';
-import { DrawPreview, HoverOverlay } from '../canvas/HoverOverlay';
+import { DrawPreview, HoverOverlay, MarqueePreview } from '../canvas/HoverOverlay';
 import { SelectionOverlay } from '../canvas/SelectionOverlay';
 import { TickStore, ValueStore, type ViewportStore } from '../canvas/store';
 import { anchorWorld } from '../comments/anchor';
@@ -74,6 +74,7 @@ function EditorShell({ view }: { view: TabView }) {
   const [viewport] = useState<ViewportStore>(() => new ValueStore<Viewport>(view.viewport));
   const [dragTick] = useState(() => new TickStore());
   const [drawDraft] = useState(() => new ValueStore<DrawDraft | null>(null));
+  const [marquee] = useState(() => new ValueStore<Rect | null>(null));
   useEffect(() => {
     view.viewport = viewport.get();
     return viewport.subscribe(() => {
@@ -320,7 +321,7 @@ function EditorShell({ view }: { view: TabView }) {
     [shownPageId],
   );
 
-  const gestures = useCanvasGestures({ canvasRef, viewport, tool, setTool, rootId, dragTick, startTextEdit, placeComment, onDraw: drawDraft.set });
+  const gestures = useCanvasGestures({ canvasRef, viewport, tool, setTool, rootId, dragTick, startTextEdit, placeComment, onDraw: drawDraft.set, onMarquee: marquee.set });
 
   /** Opens a thread from the panel: switches page when needed and pans so its pin is on screen. */
   const openThread = useCallback(
@@ -443,6 +444,7 @@ function EditorShell({ view }: { view: TabView }) {
                 onCreate={createComment}
               />
               <DrawPreview draft={drawDraft} viewport={viewport} />
+              <MarqueePreview box={marquee} viewport={viewport} />
             </>
           }
         />
