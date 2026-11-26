@@ -4870,8 +4870,48 @@ button.field-input:hover {
   min-height: 30px;
 }
 
+.mcp-agent-text {
+  display: grid;
+  min-width: 0;
+}
+
 .mcp-agent-name {
   font-weight: 500;
+}
+
+/* Where the agent's config lives on this computer, or what is wrong with it. */
+.mcp-agent-path {
+  overflow: hidden;
+  color: var(--text-3);
+  font: 10.5px/1.5 var(--mono-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-agent-path.is-warn {
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.mcp-agents-empty {
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.mcp-agents-empty[role='status'] {
+  color: var(--text-3);
+}
+
+.mcp-agents-missing {
+  margin: -6px 0 0;
+  padding: 0 16px 12px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .mcp-add {

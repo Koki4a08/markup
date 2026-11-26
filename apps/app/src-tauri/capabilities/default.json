@@ -35,6 +35,11 @@
               "validator": "^(claude-code|cursor|vscode|codex|opencode|claude-desktop|windsurf|gemini)$"
             }
           ]
+        },
+        {
+          "name": "binaries/markup",
+          "sidecar": true,
+          "args": ["agents", "--json"]
         }
       ]
     }

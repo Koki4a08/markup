@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AGENT_LABELS, AGENTS, INSTALL_COMMANDS, INSTALLED_PATHS, snippets, type Agent } from '@markup/mcp/snippets';
+import { AGENT_LABELS, AGENTS, INSTALL_COMMANDS, INSTALLED_PATHS, snippets, type Agent, type AgentReport, type AgentsReport } from '@markup/mcp/snippets';
 import { copyText, inTauri } from '../export/clipboard';
 import { isMacPlatform } from '../commands/keyboard';
 import { icons } from './icons';
@@ -20,7 +20,25 @@ interface RunState {
   output: string;
 }
 
-/** Runs the bundled `markup` sidecar. The capability only allows `install <agent>`. */
+type Scan = { status: 'loading' } | { status: 'ok'; report: AgentsReport } | { status: 'error' };
+
+/** Asks the bundled `markup` sidecar which agents are on this computer and what their configs say. */
+async function scanWithSidecar(): Promise<AgentsReport> {
+  const { Command } = await import('@tauri-apps/plugin-shell');
+  const result = await Command.sidecar('binaries/markup', ['agents', '--json']).execute();
+  if (result.code !== 0) throw new Error(result.stderr.trim() || `markup exited with code ${result.code}.`);
+  const report = JSON.parse(result.stdout) as AgentsReport;
+  if (!Array.isArray(report?.agents)) throw new Error('markup agents returned no list.');
+  return report;
+}
+
+/** A path under the home folder written from `~`. */
+const tildify = (file: string, home: string) => (home && file.toLowerCase().startsWith(home.toLowerCase()) ? `~${file.slice(home.length)}` : file);
+
+/** Where the agent's entry lives, for the line under its name. */
+const configLabel = (a: AgentReport, home: string) => (a.agent === 'claude-code' ? 'claude mcp, user scope' : tildify(a.config, home));
+
+/** Runs the bundled `markup` sidecar. The capability only allows `install <agent>` and `agents --json`. */
 async function installWithSidecar(agent: Agent): Promise<RunState> {
   const { Command } = await import('@tauri-apps/plugin-shell');
   const result = await Command.sidecar('binaries/markup', ['install', agent]).execute();
@@ -56,6 +74,19 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
   const [runs, setRuns] = useState<Partial<Record<Agent, RunState>>>({});
   const [os, setOs] = useState<Os>(detectOs);
   const [manual, setManual] = useState(false);
+  const [scan, setScan] = useState<Scan>({ status: desktop ? 'loading' : 'error' });
+
+  const rescan = async () => {
+    try {
+      setScan({ status: 'ok', report: await scanWithSidecar() });
+    } catch {
+      setScan({ status: 'error' });
+    }
+  };
+
+  useEffect(() => {
+    if (desktop) void rescan();
+  }, [desktop]);
   // Resize only: it holds install output, which switching apps to check on the agent must not throw away.
   useDismiss(onClose, { ref, blur: false, wheel: false });
 
@@ -89,10 +120,17 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
       next = { status: 'error', output: err instanceof Error ? err.message : String(err) };
     }
     setRuns((r) => ({ ...r, [agent]: next }));
+    if (next.status === 'ok') void rescan();
   };
 
   const command = os === 'windows' ? INSTALL_COMMANDS.windows : INSTALL_COMMANDS.unix;
-  const all = snippets({ command: INSTALLED_PATHS[os], args: ['mcp'] });
+  const report = scan.status === 'ok' ? scan.report : null;
+  // Desktop: this computer's real paths. Elsewhere: the standalone CLI's, for a placeholder user.
+  const all = snippets(report?.command ?? { command: INSTALLED_PATHS[os], args: ['mcp'] });
+  const byAgent = new Map(report?.agents.map((a) => [a.agent, a]));
+  // Without a scan (an older sidecar) every agent stays listed, and install itself refuses the missing ones.
+  const listed = report ? AGENTS.filter((a) => byAgent.get(a)?.found) : [...AGENTS];
+  const missing = report ? AGENTS.filter((a) => !byAgent.get(a)?.found) : [];
 
   return (
     <div className="mcp-panel" ref={ref} role="region" aria-label="Connect an agent">
@@ -108,23 +146,42 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
           : 'One command installs the markup CLI and asks which of your agents to connect.'}
       </p>
 
-      {desktop && (
+      {desktop && scan.status === 'loading' && (
+        <p className="mcp-agents-empty" role="status">
+          Looking for agents on this computer…
+        </p>
+      )}
+
+      {desktop && scan.status !== 'loading' && listed.length === 0 && (
+        <p className="mcp-agents-empty">No coding agents found on this computer. Install one, then open this again.</p>
+      )}
+
+      {desktop && scan.status !== 'loading' && listed.length > 0 && (
         <ul className="mcp-agents" aria-label="Agents">
-          {AGENTS.map((agent) => {
+          {listed.map((agent) => {
             const run = runs[agent];
             const label = AGENT_LABELS[agent];
+            const found = byAgent.get(agent);
+            const connected = run?.status === 'ok' || (!run && found?.state === 'set' && !found.problem);
             return (
               <li key={agent} className="mcp-agent">
                 <div className="mcp-agent-row">
-                  <span className="mcp-agent-name">{label}</span>
-                  {run?.status === 'ok' ? (
+                  <span className="mcp-agent-text">
+                    <span className="mcp-agent-name">{label}</span>
+                    {found && report && (
+                      <span className={`mcp-agent-path ${found.problem ? 'is-warn' : ''}`} title={found.problem ?? found.config}>
+                        {found.problem ?? configLabel(found, report.home)}
+                      </span>
+                    )}
+                  </span>
+                  {connected ? (
                     <span className="mcp-added">
                       {icons.check}
-                      Added
+                      {run?.status === 'ok' ? 'Added' : 'Connected'}
                     </span>
                   ) : (
                     <button className="mcp-add" aria-label={`Add to ${label}`} disabled={run?.status === 'running'} onClick={() => void add(agent)}>
-                      {run?.status === 'running' ? 'Adding…' : run?.status === 'error' ? 'Try again' : 'Add'}
+                      {run?.status === 'running' ? 'Adding…' : run?.status === 'error' ? 'Try again' : found?.problem ? 'Repair' : 'Add'}
                     </button>
                   )}
                 </div>
@@ -138,6 +195,8 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
           })}
         </ul>
       )}
+
+      {desktop && missing.length > 0 && <p className="mcp-agents-missing">Not found on this computer: {missing.map((a) => AGENT_LABELS[a]).join(', ')}.</p>}
 
       <section className="mcp-section" aria-label="Install from a terminal">
         <div className="mcp-section-head">
@@ -196,7 +255,7 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
                 <li key={agent} className="mcp-snippet">
                   <div className="mcp-snippet-head">
                     <span>
-                      <strong>{label}</strong> {snippet.where}
+                      <strong>{label}</strong> {report && agent !== 'claude-code' ? tildify(byAgent.get(agent)?.config ?? snippet.where, report.home) : snippet.where}
                     </span>
                     <CopyButton text={snippet.code} label={`Copy ${label} setup`} />
                   </div>
@@ -206,7 +265,11 @@ export function McpPanel({ onClose, desktop = inTauri() }: { onClose(): void; de
                 </li>
               );
             })}
-            <li className="mcp-hint">Replace “you” with your user name. <code>markup status</code> prints the exact path.</li>
+            {!report && (
+              <li className="mcp-hint">
+                Replace “you” with your user name. <code>markup status</code> prints the exact path.
+              </li>
+            )}
           </ul>
         )}
       </div>

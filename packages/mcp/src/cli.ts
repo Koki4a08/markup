@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { BRIDGE_PORT } from '@markup/protocol';
 import { connectOrHost, resilientHub, type Hub } from './hub';
-import { configPath, defaultServerCommand, detectAgent, entryProblem, install, INSTALL_TARGETS, readConfig, systemEnv, uninstall, type InstallEnv, type InstallTarget } from './install';
+import { agentReports, configPath, defaultServerCommand, detectAgent, entryProblem, install, INSTALL_TARGETS, readConfig, systemEnv, uninstall, type InstallEnv, type InstallTarget } from './install';
 import { probeBridge } from './probe';
 import { createServer } from './server';
 import { AGENT_LABELS, AGENTS, type Agent, type ServerCommand } from './snippets';
@@ -22,12 +22,14 @@ ${c.bold('Usage')}
   markup update                 Install the newest markup CLI
   markup uninstall [agent...]   Remove Markup from your agents
   markup install <agent>        Connect one agent without asking anything
+  markup agents --json          List the agents found on this computer and their configs
   markup mcp                    Run the MCP server over stdio (your agent starts this)
 
 ${c.bold('Options')}
   -y, --yes            setup: connect every agent found, without asking
       --all            setup, uninstall: every supported agent
       --command <path> setup, install: point agents at another markup binary
+      --force          install: write the config even when the agent is not found
   -v, --version        Print the version
   -h, --help           Print this help
 
@@ -50,16 +52,18 @@ const toAgent = (name: string): Agent | null => ((AGENTS as readonly string[]).i
 interface Flags {
   yes: boolean;
   all: boolean;
+  force: boolean;
   command?: string;
   agents: Agent[];
 }
 
 function parseFlags(scope: string, args: string[], allowed: (keyof Flags)[]): Flags {
-  const flags: Flags = { yes: false, all: false, agents: [] };
+  const flags: Flags = { yes: false, all: false, force: false, agents: [] };
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
     if ((a === '-y' || a === '--yes') && allowed.includes('yes')) flags.yes = true;
     else if (a === '--all' && allowed.includes('all')) flags.all = true;
+    else if (a === '--force' && allowed.includes('force')) flags.force = true;
     else if (a === '--command' && allowed.includes('command') && args[i + 1]) flags.command = args[++i];
     else if (!a.startsWith('-') && allowed.includes('agents')) {
       const agent = toAgent(a);
@@ -108,10 +112,23 @@ function runInstall(rest: string[]) {
   const [target, ...flags] = rest;
   const resolved = target === 'print' ? 'print' : target ? toAgent(target) : null;
   if (!resolved) return fail('install', `expected one of ${INSTALL_TARGETS.join(', ')}${target ? `, got "${target}"` : ''}.\nRun markup --help.`);
-  const { command } = parseFlags('install', flags, ['command']);
-  const result = install(resolved as InstallTarget, serverEntry(command), systemEnv(home));
+  const { command, force } = parseFlags('install', flags, ['command', 'force']);
+  const env = systemEnv(home);
+  // Never write a config for an agent that is not here: it would leave a stray file the agent never reads.
+  if (resolved !== 'print' && !force && !detectAgent(resolved, env)) {
+    const where = resolved === 'claude-code' ? 'the claude command' : tildify(path.dirname(configPath(resolved, env)));
+    return fail('install', `${AGENT_LABELS[resolved]} was not found on this computer (looked for ${where}). Nothing changed.
+Install it first, or pass --force to add Markup anyway.`);
+  }
+  const result = install(resolved as InstallTarget, serverEntry(command), env);
   if (!result.ok) return fail('install', result.message);
   if (result.message) process.stdout.write(`${result.message}\n`);
+}
+
+/** Machine-readable agent list for the desktop app: what is installed, where each config lives, what it says. */
+function runAgents(rest: string[]) {
+  if (rest.length !== 1 || rest[0] !== '--json') return fail('agents', 'expected --json.');
+  write(JSON.stringify({ home, command: serverEntry(), agents: agentReports(quietEnv()) }));
 }
 
 async function runSetup(rest: string[]) {
@@ -276,6 +293,8 @@ async function main(argv: string[]) {
       return runMcp();
     case 'install':
       return runInstall(rest);
+    case 'agents':
+      return runAgents(rest);
     case 'setup':
     case 'connect':
       return runSetup(rest);

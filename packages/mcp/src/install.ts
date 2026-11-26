@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AGENT_LABELS, AGENTS, claudeAddArgs, claudeAddLine, codexTable, jsonEntry, jsonKey, SERVER_NAME, snippets, type Agent, type JsonAgent, type ServerCommand } from './snippets';
+import { AGENT_LABELS, AGENTS, claudeAddArgs, type AgentReport, claudeAddLine, codexTable, jsonEntry, jsonKey, SERVER_NAME, snippets, type Agent, type JsonAgent, type ServerCommand } from './snippets';
 
 export interface RunResult {
   status: number | null;
@@ -15,6 +15,10 @@ export interface InstallEnv {
   platform: NodeJS.Platform;
   /** Windows %APPDATA%; defaults to <home>/AppData/Roaming. */
   appData?: string;
+  /** Windows %LOCALAPPDATA%, where Store (MSIX) apps keep their redirected files. Defaults to <home>/AppData/Local. */
+  localAppData?: string;
+  /** Codex's $CODEX_HOME, when set. Defaults to <home>/.codex. */
+  codexHome?: string;
   log(line: string): void;
   findExecutable(name: string): string | null;
   run(command: string, args: string[]): RunResult;
@@ -25,8 +29,29 @@ export interface InstallResult {
   message: string;
 }
 
+type PathEnv = Pick<InstallEnv, 'home' | 'platform' | 'appData' | 'localAppData' | 'codexHome'>;
+
+/**
+ * Claude Desktop from the Microsoft Store runs packaged: Windows redirects its %APPDATA%\Claude to
+ * %LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude, and it never sees the plain folder.
+ */
+function packagedClaudeDir(env: PathEnv): string | null {
+  const packages = path.join(env.localAppData ?? path.join(env.home, 'AppData', 'Local'), 'Packages');
+  let names: string[];
+  try {
+    names = fs.readdirSync(packages).filter((n) => /^Claude_/i.test(n));
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    const dir = path.join(packages, name, 'LocalCache', 'Roaming', 'Claude');
+    if (fs.existsSync(dir)) return dir;
+  }
+  return null;
+}
+
 /** Where the agent keeps its MCP servers. Claude Code's file is only read: changes go through `claude mcp`. */
-export function configPath(agent: Agent, env: Pick<InstallEnv, 'home' | 'platform' | 'appData'>): string {
+export function configPath(agent: Agent, env: PathEnv): string {
   const { home } = env;
   const appData = env.appData ?? path.join(home, 'AppData', 'Roaming');
   switch (agent) {
@@ -35,7 +60,7 @@ export function configPath(agent: Agent, env: Pick<InstallEnv, 'home' | 'platfor
     case 'cursor':
       return path.join(home, '.cursor', 'mcp.json');
     case 'codex':
-      return path.join(home, '.codex', 'config.toml');
+      return path.join(env.codexHome || path.join(home, '.codex'), 'config.toml');
     case 'opencode':
       return path.join(home, '.config', 'opencode', 'opencode.json');
     case 'vscode':
@@ -43,7 +68,7 @@ export function configPath(agent: Agent, env: Pick<InstallEnv, 'home' | 'platfor
       if (env.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'Code', 'User', 'mcp.json');
       return path.join(home, '.config', 'Code', 'User', 'mcp.json');
     case 'claude-desktop':
-      if (env.platform === 'win32') return path.join(appData, 'Claude', 'claude_desktop_config.json');
+      if (env.platform === 'win32') return path.join(packagedClaudeDir(env) ?? path.join(appData, 'Claude'), 'claude_desktop_config.json');
       if (env.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
       return path.join(home, '.config', 'Claude', 'claude_desktop_config.json');
     case 'windsurf':
@@ -273,7 +298,7 @@ export function uninstall(agent: Agent, env: InstallEnv): InstallResult {
 /** What an agent's config says about markup. */
 export type ConfigState = { state: 'missing' } | { state: 'set'; entry: ServerCommand } | { state: 'unreadable'; message: string };
 
-export function readConfig(agent: Agent, env: Pick<InstallEnv, 'home' | 'platform' | 'appData'>): ConfigState {
+export function readConfig(agent: Agent, env: PathEnv): ConfigState {
   const file = configPath(agent, env);
   try {
     if (agent === 'codex') {
@@ -310,7 +335,7 @@ export function entryProblem(entry: ServerCommand, exists: (file: string) => boo
 }
 
 /** How we know an agent is on this machine (a folder or a command), or null when nothing points to it. */
-export function detectAgent(agent: Agent, env: Pick<InstallEnv, 'home' | 'platform' | 'appData' | 'findExecutable'>): string | null {
+export function detectAgent(agent: Agent, env: PathEnv & Pick<InstallEnv, 'findExecutable'>): string | null {
   const { home } = env;
   const dir = (p: string) => (fs.existsSync(p) ? p : null);
   const exe = (name: string) => (env.findExecutable(name) ? `${name} command` : null);
@@ -320,7 +345,7 @@ export function detectAgent(agent: Agent, env: Pick<InstallEnv, 'home' | 'platfo
     case 'cursor':
       return dir(path.join(home, '.cursor'));
     case 'codex':
-      return dir(path.join(home, '.codex')) ?? exe('codex');
+      return dir(path.dirname(configPath('codex', env))) ?? exe('codex');
     case 'opencode':
       return dir(path.join(home, '.config', 'opencode')) ?? exe('opencode');
     case 'gemini':
@@ -331,6 +356,19 @@ export function detectAgent(agent: Agent, env: Pick<InstallEnv, 'home' | 'platfo
     case 'claude-desktop':
       return dir(path.dirname(configPath(agent, env)));
   }
+}
+
+export function agentReports(env: PathEnv & Pick<InstallEnv, 'findExecutable'>, exists: (file: string) => boolean = fs.existsSync): AgentReport[] {
+  return AGENTS.map((agent) => {
+    const config = readConfig(agent, env);
+    const report: AgentReport = { agent, label: AGENT_LABELS[agent], found: detectAgent(agent, env), config: configPath(agent, env), state: config.state };
+    if (config.state === 'set') {
+      report.command = config.entry.command;
+      const problem = entryProblem(config.entry, exists);
+      if (problem) report.problem = problem;
+    } else if (config.state === 'unreadable') report.problem = config.message;
+    return report;
+  });
 }
 
 function printAll(entry: ServerCommand, env: InstallEnv): InstallResult {
@@ -448,6 +486,8 @@ export function systemEnv(home: string): InstallEnv {
     home,
     platform: process.platform,
     appData: process.env.APPDATA,
+    localAppData: process.env.LOCALAPPDATA,
+    codexHome: process.env.CODEX_HOME,
     log: (line) => process.stdout.write(`${line}\n`),
     findExecutable: (name) =>
       findExecutable(name, { home, platform: process.platform, pathEnv: process.env.PATH ?? process.env.Path ?? '', appData: process.env.APPDATA, env: process.env, isFile: isFileOnDisk, run: runCommand }),

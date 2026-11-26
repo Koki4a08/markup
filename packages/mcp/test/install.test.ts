@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { configPath, defaultServerCommand, detectAgent, entryProblem, findExecutable, install, readCodexEntry, readConfig, removeCodexTable, uninstall, upsertCodexTable, type InstallEnv, type RunResult } from '../src/install';
+import { agentReports, configPath, defaultServerCommand, detectAgent, entryProblem, findExecutable, install, readCodexEntry, readConfig, removeCodexTable, uninstall, upsertCodexTable, type InstallEnv, type RunResult } from '../src/install';
 import { AGENTS, snippets } from '../src/snippets';
 
 const entry = { command: 'C:\\Program Files\\Markup\\markup.exe', args: ['mcp'] };
@@ -252,6 +252,42 @@ describe('markup status', () => {
     expect(detectAgent('claude-code', env)).toBe('claude command');
     expect(detectAgent('codex', env)).toBe('codex command');
     expect(detectAgent('windsurf', env)).toBeNull();
+  });
+
+  it('follows CODEX_HOME for the codex config', () => {
+    env.findExecutable = () => null;
+    const codexHome = path.join(home, 'custom-codex');
+    const custom = { ...env, codexHome };
+    expect(configPath('codex', custom)).toBe(path.join(codexHome, 'config.toml'));
+    expect(detectAgent('codex', custom)).toBeNull();
+    fs.mkdirSync(codexHome);
+    expect(detectAgent('codex', custom)).toBe(codexHome);
+    expect(install('codex', entry, custom).ok).toBe(true);
+    expect(fs.existsSync(path.join(home, '.codex'))).toBe(false);
+  });
+
+  it('writes Claude Desktop from the Microsoft Store into its packaged folder', () => {
+    const win = { ...env, platform: 'win32' as const, appData: path.join(home, 'Roaming'), localAppData: path.join(home, 'Local') };
+    expect(configPath('claude-desktop', win)).toBe(path.join(home, 'Roaming', 'Claude', 'claude_desktop_config.json'));
+    // A package folder without the redirected Claude folder is not used.
+    fs.mkdirSync(path.join(home, 'Local', 'Packages', 'Claude_abc', 'LocalCache', 'Roaming'), { recursive: true });
+    expect(configPath('claude-desktop', win)).toBe(path.join(home, 'Roaming', 'Claude', 'claude_desktop_config.json'));
+    const packaged = path.join(home, 'Local', 'Packages', 'Claude_abc', 'LocalCache', 'Roaming', 'Claude');
+    fs.mkdirSync(packaged);
+    expect(configPath('claude-desktop', win)).toBe(path.join(packaged, 'claude_desktop_config.json'));
+    expect(detectAgent('claude-desktop', win)).toBe(packaged);
+  });
+
+  it('reports each agent: found, config path and state', () => {
+    env.findExecutable = () => null;
+    write(path.join(home, '.cursor', 'mcp.json'), JSON.stringify({ mcpServers: { markup: { command: '/gone/markup', args: ['mcp'] } } }));
+    fs.mkdirSync(path.join(home, '.gemini'));
+    const reports = agentReports(env, () => false);
+    const cursor = reports.find((r) => r.agent === 'cursor');
+    expect(cursor).toEqual({ agent: 'cursor', label: 'Cursor', found: path.join(home, '.cursor'), config: path.join(home, '.cursor', 'mcp.json'), state: 'set', command: '/gone/markup', problem: 'points to a missing file: /gone/markup' });
+    expect(reports.find((r) => r.agent === 'gemini')).toMatchObject({ found: path.join(home, '.gemini'), state: 'missing' });
+    expect(reports.find((r) => r.agent === 'windsurf')).toMatchObject({ found: null, state: 'missing' });
+    expect(reports.map((r) => r.agent)).toEqual([...AGENTS]);
   });
 });
 

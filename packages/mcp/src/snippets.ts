@@ -14,6 +14,29 @@ export const AGENT_LABELS: Record<Agent, string> = {
   gemini: 'Gemini CLI',
 };
 
+/** One agent as `markup agents --json` reports it: whether it is on this machine, where its config lives, what that says. */
+export interface AgentReport {
+  agent: Agent;
+  label: string;
+  /** The folder or command that shows the agent is installed, or null when nothing does. */
+  found: string | null;
+  /** The file markup writes to (Claude Code: the file `claude mcp` keeps). */
+  config: string;
+  state: 'missing' | 'set' | 'unreadable';
+  /** The command the config starts, when markup is set up. */
+  command?: string;
+  /** Why the configured entry cannot start, or why the config cannot be read. */
+  problem?: string;
+}
+
+/** Output of `markup agents --json`. */
+export interface AgentsReport {
+  home: string;
+  /** What `markup install` would write: the binary that answered. */
+  command: ServerCommand;
+  agents: AgentReport[];
+}
+
 /** How an agent starts the stdio server. */
 export interface ServerCommand {
   command: string;
