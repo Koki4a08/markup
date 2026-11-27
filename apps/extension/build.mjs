@@ -47,6 +47,8 @@ async function bundle(outdir, manifestJson) {
     platform: 'browser',
     format: 'iife',
     target: ['chrome120', 'firefox128'],
+    // The picker's Geist font ships inside content.js (see src/picker/font.ts).
+    loader: { '.woff2': 'binary' },
     outfile: `${outdir}/content.js`,
   });
   await writeFile(`${outdir}/manifest.json`, `${JSON.stringify(manifestJson, null, 2)}\n`);

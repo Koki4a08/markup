@@ -1,52 +1,91 @@
 import { visibleShape } from '../capture/clip';
+import { ensureUiFont, UI_FONT_FAMILY } from './font';
 
 /*
- * Picker chrome, drawn in closed shadow roots so the page's CSS never reaches it. It matches the Markup
- * editor: graphite surfaces, hairline borders, blue for the target and selection.
+ * Picker chrome, drawn in closed shadow roots so the page's CSS never reaches it. It uses the dark theme
+ * of the Markup editor and markup.here (markup-website/src/styles/globals.css): zinc graphite glass,
+ * hairline rings, raised neutral tiles for keys, and the indigo accent for the target and selection.
+ * Keep these tokens in step with the site and the editor.
  */
-const FONT = `system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`;
+const FONT = `'${UI_FONT_FAMILY}', 'Geist Variable', 'Geist', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`;
 const STYLE = `
-:host { all: initial; }
+:host { all: initial;
+  --ink: #fafafa; --ink-2: #a1a1aa; --ink-3: #6b6b74;
+  --accent: #7f70ff; --accent-text: #a49bff; --accent-soft: rgb(127 112 255 / 0.14); --accent-softer: rgb(127 112 255 / 0.07);
+  --success: #3fcf96; --danger: #ff7275;
+  --glass: rgb(18 18 21 / 0.84);
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 0 0 1px rgb(255 255 255 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.55),
+    0 2px 6px rgb(0 0 0 / 0.3), 0 18px 44px -12px rgb(0 0 0 / 0.7);
+  --tile: linear-gradient(180deg, #26262c 0%, #16161a 100%);
+  --tile-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.1), inset 0 -1px 0 rgb(0 0 0 / 0.4),
+    0 1px 2px rgb(0 0 0 / 0.5);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
 * { box-sizing: border-box; pointer-events: none; }
-.box { position: fixed; display: none; border: 1.5px solid #7f70ff; background: rgba(127, 112, 255, 0.1); border-radius: 2px;
-  transition: left 80ms ease-out, top 80ms ease-out, width 80ms ease-out, height 80ms ease-out; }
-.box.picked { background: rgba(127, 112, 255, 0.18); border-style: dashed; transition: none; }
-.box.capturing { border-style: solid; animation: scan 1.1s ease-in-out infinite; }
-@keyframes scan { 50% { background: rgba(127, 112, 255, 0.28); box-shadow: 0 0 0 4px rgba(127, 112, 255, 0.18); } }
+
+/* Target and selection: the editor's hover outline and dashed selection item. */
+.box { position: fixed; display: none; border: 1.5px solid var(--accent); background: var(--accent-softer); border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12), 0 0 18px -4px rgb(127 112 255 / 0.35);
+  transition: left 90ms var(--ease-out), top 90ms var(--ease-out), width 90ms var(--ease-out), height 90ms var(--ease-out); }
+.box.picked { border-width: 1px; border-style: dashed; background: var(--accent-soft); box-shadow: none; transition: none;
+  animation: pick 260ms var(--ease-out); }
+.box.capturing { border-style: solid; animation: scan 1.2s ease-in-out infinite; }
+@keyframes pick { from { box-shadow: 0 0 0 6px rgb(127 112 255 / 0.22); } }
+@keyframes scan { 50% { background: rgb(127 112 255 / 0.24); box-shadow: 0 0 0 4px rgb(127 112 255 / 0.16), 0 0 28px -4px rgb(127 112 255 / 0.5); } }
+
 .label { position: fixed; display: none; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px;
-  background: #121215; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.5);
-  color: #a1a1aa; font: 500 11px/1 ${FONT}; white-space: nowrap; max-width: 80vw; overflow: hidden; }
-.label b { color: #a49bff; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-.hint { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
-  max-width: calc(100vw - 32px); padding: 8px 14px 8px 10px; border-radius: 12px; background: #121215;
-  border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 40px -10px rgba(0, 0, 0, 0.6);
-  color: #fafafa; font: 500 12.5px/18px ${FONT}; white-space: nowrap; overflow: hidden; animation: rise 220ms cubic-bezier(0.16, 1, 0.3, 1); }
-.hint .item { display: inline-flex; align-items: center; gap: 6px; }
-.hint .dot { width: 3px; height: 3px; border-radius: 50%; background: #52525b; flex: none; }
-kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px;
-  background: #1f1f23; border: 1px solid rgba(255, 255, 255, 0.12); border-bottom-width: 2px; color: #fafafa;
-  font: 600 11px/1 ${FONT}; }
-.mark { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px; background: #5b47ff; color: #fff; }
-.status { position: fixed; left: 50%; top: 18px; display: flex; align-items: center; gap: 10px; min-width: 220px; max-width: min(460px, calc(100vw - 32px));
-  padding: 10px 14px 12px 12px; border-radius: 12px; background: #121215; border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 40px -10px rgba(0, 0, 0, 0.6); color: #fafafa; font: 500 13px/18px ${FONT};
-  overflow: hidden; transform: translateX(-50%); animation: drop 240ms cubic-bezier(0.16, 1, 0.3, 1); }
-.status.leaving { opacity: 0; transform: translate(-50%, -6px); transition: opacity 200ms ease-out, transform 200ms ease-out; }
-.status .icon { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px; background: #1f1f23; color: #a49bff; }
+  background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: var(--glass-shadow); color: var(--ink-3); font: 500 11px/1 ${FONT}; font-variant-numeric: tabular-nums;
+  white-space: nowrap; max-width: 80vw; overflow: hidden; }
+.label b { color: var(--accent-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+
+/* Shortcut bar: one glass capsule, the brand mark, the main action in full ink, the rest quieter. */
+.hint { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px;
+  max-width: calc(100vw - 24px); height: 40px; padding: 0 14px 0 8px; border-radius: 14px; background: var(--glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); box-shadow: var(--glass-shadow);
+  color: var(--ink-2); font: 500 12px/1 ${FONT}; letter-spacing: -0.005em; white-space: nowrap; overflow: hidden;
+  animation: rise 320ms var(--ease-out) backwards; }
+.hint .item { display: inline-flex; align-items: center; gap: 6px; animation: fade 320ms var(--ease-out) backwards; }
+.hint .item.main { color: var(--ink); }
+.hint .or { color: var(--ink-3); }
+.hint .sep { width: 1px; height: 14px; flex: none; background: rgb(255 255 255 / 0.08); }
+.hint .keys { display: inline-flex; gap: 3px; }
+kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 5px; background: var(--tile); box-shadow: var(--tile-shadow); color: #e4e4e7; font: 600 10.5px/1 ${FONT};
+  letter-spacing: 0; }
+kbd svg { display: block; }
+.mark { display: block; width: 24px; height: 24px; flex: none; border-radius: 7px; overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12), 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 12px -4px rgb(127 112 255 / 0.55); }
+.mark svg { display: block; width: 100%; height: 100%; }
+/* Narrow windows keep the essentials instead of clipping the bar. */
+@media (max-width: 900px) { .hint .opt-2 { display: none; } }
+@media (max-width: 620px) { .hint .opt-1 { display: none; } }
+
+/* Progress toast. */
+.status { position: fixed; left: 50%; top: 18px; display: flex; align-items: center; gap: 10px; min-width: 240px; max-width: min(460px, calc(100vw - 32px));
+  padding: 9px 14px 11px 9px; border-radius: 14px; background: var(--glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); box-shadow: var(--glass-shadow);
+  color: var(--ink); font: 500 13px/18px ${FONT}; overflow: hidden; transform: translateX(-50%);
+  animation: drop 320ms var(--ease-out); }
+.status.leaving { opacity: 0; filter: blur(3px); transform: translate(-50%, -6px);
+  transition: opacity 200ms ease-out, transform 200ms ease-out, filter 200ms ease-out; }
+.status .icon { display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 7px; background: var(--tile);
+  box-shadow: var(--tile-shadow); color: var(--accent-text); transition: color 200ms ease; }
 .status .text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.status .pct { color: #a1a1aa; font-variant-numeric: tabular-nums; }
-.status .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: #7f70ff; transform-origin: 0 50%;
-  transform: scaleX(0); }
-.status .pct { min-width: 34px; text-align: right; }
-.cover { position: fixed; left: 0; top: 0; display: block; max-width: none; }
-.status.done .icon { background: rgba(63, 207, 150, 0.14); color: #3fcf96; }
-.status.done .bar { background: #3fcf96; }
-.status.error .icon { background: rgba(255, 114, 117, 0.14); color: #ff7275; }
+.status .pct { min-width: 34px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.status .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; transform-origin: 0 50%; transform: scaleX(0);
+  background: linear-gradient(90deg, rgb(127 112 255 / 0.4), var(--accent)); box-shadow: 0 0 10px rgb(127 112 255 / 0.6);
+  border-radius: 0 2px 2px 0; }
+.status.done .icon { color: var(--success); }
+.status.done .bar { background: var(--success); box-shadow: 0 0 10px rgb(63 207 150 / 0.5); }
+.status.error .icon { color: var(--danger); }
 .status.error .bar { display: none; }
+.cover { position: fixed; left: 0; top: 0; display: block; max-width: none; }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } }
-@keyframes drop { from { opacity: 0; transform: translate(-50%, -8px); } }
+@keyframes rise { from { opacity: 0; filter: blur(4px); transform: translate(-50%, 10px) scale(0.97); } }
+@keyframes drop { from { opacity: 0; filter: blur(4px); transform: translate(-50%, -10px) scale(0.97); } }
+@keyframes fade { from { opacity: 0; filter: blur(2px); transform: translateY(3px); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 `;
 
@@ -70,14 +109,14 @@ export const HINT = hintItems(false)
   .join(' · ');
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-function svg(doc: Document, paths: string, cls = ''): SVGSVGElement {
+function svg(doc: Document, paths: string, cls = '', size = 14, weight = 2.25): SVGSVGElement {
   const el = doc.createElementNS(SVG_NS, 'svg');
-  el.setAttribute('width', '14');
-  el.setAttribute('height', '14');
+  el.setAttribute('width', String(size));
+  el.setAttribute('height', String(size));
   el.setAttribute('viewBox', '0 0 24 24');
   el.setAttribute('fill', 'none');
   el.setAttribute('stroke', 'currentColor');
-  el.setAttribute('stroke-width', '2');
+  el.setAttribute('stroke-width', String(weight));
   el.setAttribute('stroke-linecap', 'round');
   el.setAttribute('stroke-linejoin', 'round');
   if (cls) el.setAttribute('class', cls);
@@ -90,11 +129,45 @@ function svg(doc: Document, paths: string, cls = ''): SVGSVGElement {
 }
 
 const ICON = {
-  mark: 'M4 8V5a1 1 0 0 1 1-1h3|M16 4h3a1 1 0 0 1 1 1v3|M20 16v3a1 1 0 0 1-1 1h-3|M8 20H5a1 1 0 0 1-1-1v-3|M10 9.5l5.5 2.3-2.3.8-.8 2.3z',
   spinner: 'M21 12a9 9 0 1 1-6.2-8.56',
   check: 'M20 6 9 17l-5-5',
   alert: 'M12 8v5|M12 16.5h.01|M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
 };
+
+/** Symbol keys drawn as icons (font glyphs for these vary a lot between systems); word keys stay text. */
+const KEY_ICON: Record<string, string> = {
+  '↵': 'M20 4v7a4 4 0 0 1-4 4H4|m9 10-5 5 5 5',
+  '⇧': 'M9 18v-6H5l7-7 7 7h-4v6H9z',
+  '↑': 'm5 12 7-7 7 7|M12 19V5',
+  '↓': 'M12 5v14|m19 12-7 7-7-7',
+  '⌘': 'M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3',
+  '⌥': 'M3 3h6l6 18h6|M14 3h7',
+};
+
+/** Bar items by how much they matter: 0 always shows, 1 and 2 drop out as the window narrows. */
+const HINT_PRIORITY = [0, 1, 2, 1, 2, 0];
+
+/** The Markup brand mark (assets/icon.svg). */
+function brandMark(doc: Document): SVGSVGElement {
+  const el = doc.createElementNS(SVG_NS, 'svg');
+  el.setAttribute('viewBox', '0 0 1024 1024');
+  el.setAttribute('aria-hidden', 'true');
+  const shapes: [string, Record<string, string>][] = [
+    ['rect', { width: '1024', height: '1024', fill: '#2A17B0' }],
+    ['path', { d: 'M583.0,500.3 L686.5,264.8 L821.1,264.8 L764.0,426.6 L844.0,760.0 L719.0,760.0 L674.5,588.6 L595.2,555.2Z', fill: '#B3ACFA', stroke: '#B3ACFA' }],
+    ['path', { d: 'M176.7,760.0 L323.2,264.8 L469.7,264.8 L448.2,351.3 L594.8,632.2 L470.3,632.2 L388.4,490.2 L302.7,760.0Z', fill: '#FFFFFF', stroke: '#FFFFFF' }],
+  ];
+  for (const [tag, attrs] of shapes) {
+    const s = doc.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) s.setAttribute(k, v);
+    if (tag === 'path') {
+      s.setAttribute('stroke-width', '50.4');
+      s.setAttribute('stroke-linejoin', 'round');
+    }
+    el.appendChild(s);
+  }
+  return el;
+}
 
 export class Overlay {
   readonly host: HTMLElement;
@@ -182,25 +255,39 @@ function hintBar(doc: Document): HTMLElement {
   bar.setAttribute('aria-label', HINT);
   const mark = doc.createElement('span');
   mark.className = 'mark';
-  mark.append(svg(doc, ICON.mark));
+  mark.append(brandMark(doc));
   bar.append(mark);
   hintItems().forEach((item, i) => {
+    const level = HINT_PRIORITY[i] ?? 0;
+    const opt = level ? ` opt-${level}` : '';
     if (i) {
-      const dot = doc.createElement('span');
-      dot.className = 'dot';
-      bar.append(dot);
+      const sep = doc.createElement('span');
+      sep.className = `sep${opt}`;
+      bar.append(sep);
     }
     const el = doc.createElement('span');
-    el.className = 'item';
-    item.keys.forEach((k, j) => {
-      if (k === 'Click') el.append(doc.createTextNode(j === 0 && item.keys.length > 1 ? 'Click or' : 'Click'));
-      else {
-        const kbd = doc.createElement('kbd');
-        kbd.textContent = k;
-        el.append(kbd);
+    el.className = `item${i === 0 ? ' main' : ''}${opt}`;
+    el.style.animationDelay = `${60 + i * 35}ms`;
+    const keys = doc.createElement('span');
+    keys.className = 'keys';
+    for (const k of item.keys) {
+      if (k === 'Click') {
+        el.append(doc.createTextNode('Click'));
+        if (item.keys.length > 1) {
+          const or = doc.createElement('span');
+          or.className = 'or';
+          or.textContent = 'or';
+          el.append(or);
+        }
+        continue;
       }
-    });
-    el.append(doc.createTextNode(item.text));
+      const kbd = doc.createElement('kbd');
+      kbd.setAttribute('aria-label', k);
+      if (KEY_ICON[k]) kbd.append(svg(doc, KEY_ICON[k], '', 11, 2.5));
+      else kbd.textContent = k;
+      keys.append(kbd);
+    }
+    el.append(keys, doc.createTextNode(item.text));
     bar.append(el);
   });
   return bar;
@@ -416,6 +503,7 @@ function placeShape(box: HTMLElement, el: Element): void {
 
 /** A full-viewport, click-through host with the overlay styles in a closed shadow root. Capture skips it. */
 function shadowHost(doc: Document): [HTMLElement, ShadowRoot] {
+  ensureUiFont(doc);
   const host = doc.createElement('div');
   host.setAttribute('data-markup-snapshot', '');
   host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;';
